@@ -1,0 +1,7 @@
+<network>
+  <!-- lab-mgmt — /24 fully isolated, no NAT -->
+  <name>lab-mgmt</name>
+  <bridge delay="0" name="virbr-mgmt" stp="on"></bridge>
+  <ip address="10.0.3.254" netmask="255.255.255.0"></ip>
+  <dns enable="no"></dns>
+</network>

@@ -1,0 +1,174 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<unattend xmlns="urn:schemas-microsoft-com:unattend" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <settings pass="windowsPE">
+    <component language="neutral" name="Microsoft-Windows-International-Core-WinPE" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" versionScope="nonSxS">
+      <SetupUILanguage>
+        <UILanguage>en-US</UILanguage>
+      </SetupUILanguage>
+      <InputLocale>en-US</InputLocale>
+      <SystemLocale>en-US</SystemLocale>
+      <UILanguage>en-US</UILanguage>
+      <UserLocale>en-US</UserLocale>
+    </component>
+    <component language="neutral" name="Microsoft-Windows-PnpCustomizationsWinPE" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" versionScope="nonSxS">
+      <DriverPaths>
+        <PathAndCredentials wcm:action="add" wcm:keyValue="1">
+          <Path>D:\NetKVM</Path>
+        </PathAndCredentials>
+      </DriverPaths>
+    </component>
+    <component language="neutral" name="Microsoft-Windows-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" versionScope="nonSxS">
+      <UserData>
+        <AcceptEula>true</AcceptEula>
+        <ProductKey>
+          <Key>N69G4-B89J2-4G8F4-WWYCC-J464C</Key>
+          <WillShowUI>Never</WillShowUI>
+        </ProductKey>
+      </UserData>
+      <ImageInstall>
+        <OSImage>
+          <InstallFrom>
+            <MetaData wcm:action="add">
+              <Key>/IMAGE/DESCRIPTION</Key>
+              <Value>Windows Server 2019 SERVERSTANDARDCORE</Value>
+            </MetaData>
+          </InstallFrom>
+          <InstallToAvailablePartition>false</InstallToAvailablePartition>
+          <InstallTo>
+            <DiskID>0</DiskID>
+            <PartitionID>2</PartitionID>
+          </InstallTo>
+          <WillShowUI>Never</WillShowUI>
+        </OSImage>
+      </ImageInstall>
+      <DiskConfiguration>
+        <WillShowUI>Never</WillShowUI>
+        <Disk wcm:action="add">
+          <DiskID>0</DiskID>
+          <WillWipeDisk>true</WillWipeDisk>
+          <CreatePartitions>
+            <CreatePartition wcm:action="add">
+              <Order>1</Order>
+              <Size>500</Size>
+              <Type>EFI</Type>
+            </CreatePartition>
+            <CreatePartition wcm:action="add">
+              <Order>2</Order>
+              <Extend>true</Extend>
+              <Type>Primary</Type>
+            </CreatePartition>
+          </CreatePartitions>
+          <ModifyPartitions>
+            <ModifyPartition wcm:action="add">
+              <Order>1</Order>
+              <PartitionID>1</PartitionID>
+              <Format>FAT32</Format>
+              <Label>System</Label>
+            </ModifyPartition>
+            <ModifyPartition wcm:action="add">
+              <Order>2</Order>
+              <PartitionID>2</PartitionID>
+              <Format>NTFS</Format>
+              <Label>Windows</Label>
+              <Letter>C</Letter>
+            </ModifyPartition>
+          </ModifyPartitions>
+        </Disk>
+      </DiskConfiguration>
+    </component>
+  </settings>
+  <settings pass="specialize">
+    <component language="neutral" name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" versionScope="nonSxS">
+      <ComputerName>WIN19</ComputerName>
+      <TimeZone>SA Pacific Standard Time</TimeZone>
+    </component>
+    <!-- Static IP via TCPIP component. Element order is mandatory per MS docs:
+         Ipv4Settings -> Identifier -> UnicastIpAddresses -> Routes
+         Identifier = MAC address of the VirtIO NIC (dashes, not colons) -->
+    <component language="neutral" name="Microsoft-Windows-TCPIP" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" versionScope="nonSxS">
+      <Interfaces>
+        <Interface wcm:action="add">
+          <Ipv4Settings>
+            <DhcpEnabled>false</DhcpEnabled>
+            <Metric>10</Metric>
+            <RouterDiscoveryEnabled>false</RouterDiscoveryEnabled>
+          </Ipv4Settings>
+          <Identifier>Ethernet Instance 0</Identifier>
+          <UnicastIpAddresses>
+            <IpAddress wcm:action="add" wcm:keyValue="1">10.0.1.10/24</IpAddress>
+          </UnicastIpAddresses>
+          <Routes>
+            <Route wcm:action="add">
+              <Identifier>1</Identifier>
+              <Metric>10</Metric>
+              <NextHopAddress>10.0.1.1</NextHopAddress>
+              <Prefix>0.0.0.0/0</Prefix>
+            </Route>
+          </Routes>
+        </Interface>
+      </Interfaces>
+    </component>
+    <component language="neutral" name="Microsoft-Windows-DNS-Client" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" versionScope="nonSxS">
+      <Interfaces>
+        <Interface wcm:action="add">
+          <Identifier>Ethernet Instance 0</Identifier>
+          <DNSServerSearchOrder>
+            <IpAddress wcm:action="add" wcm:keyValue="1">1.1.1.1</IpAddress>
+            <IpAddress wcm:action="add" wcm:keyValue="2">8.8.8.8</IpAddress>
+          </DNSServerSearchOrder>
+          <EnableAdapterDomainNameRegistration>false</EnableAdapterDomainNameRegistration>
+        </Interface>
+      </Interfaces>
+    </component>
+  </settings>
+  <settings pass="oobeSystem">
+    <component language="neutral" name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" versionScope="nonSxS">
+      <OOBE>
+        <HideEULAPage>true</HideEULAPage>
+        <HideLocalAccountScreen>true</HideLocalAccountScreen>
+        <HideOnlineAccountScreens>true</HideOnlineAccountScreens>
+        <HideWirelessSetupInOOBE>true</HideWirelessSetupInOOBE>
+        <NetworkLocation>Work</NetworkLocation>
+        <ProtectYourPC>1</ProtectYourPC>
+        <SkipMachineOOBE>true</SkipMachineOOBE>
+        <SkipUserOOBE>true</SkipUserOOBE>
+      </OOBE>
+      <!-- AutoLogon triggers the shell session needed to fire RunOnce keys on Server Core -->
+      <AutoLogon>
+        <Password>
+          <Value>Server2012!</Value>
+          <PlainText>true</PlainText>
+        </Password>
+        <Username>Administrator</Username>
+        <Enabled>true</Enabled>
+        <LogonCount>1</LogonCount>
+      </AutoLogon>
+      <UserAccounts>
+        <AdministratorPassword>
+          <Value>Server2012!</Value>
+          <PlainText>true</PlainText>
+        </AdministratorPassword>
+      </UserAccounts>
+      <FirstLogonCommands>
+        <SynchronousCommand wcm:action="add">
+          <Order>1</Order>
+          <CommandLine>powershell.exe -NonInteractive -ExecutionPolicy Bypass -Command "Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0"</CommandLine>
+          <Description>Install OpenSSH Server</Description>
+          <RequiresUserInput>false</RequiresUserInput>
+        </SynchronousCommand>
+        <SynchronousCommand wcm:action="add">
+          <Order>2</Order>
+          <CommandLine>powershell.exe -NonInteractive -ExecutionPolicy Bypass -Command "Set-Service sshd -StartupType Automatic; Start-Service sshd"</CommandLine>
+          <Description>Enable and start sshd</Description>
+          <RequiresUserInput>false</RequiresUserInput>
+        </SynchronousCommand>
+        <SynchronousCommand wcm:action="add">
+          <Order>3</Order>
+          <CommandLine>powershell.exe -NonInteractive -ExecutionPolicy Bypass -Command "New-NetFirewallRule -Name OpenSSH-In -DisplayName 'OpenSSH Server' -Enabled True -Direction Inbound -Protocol TCP -Action Allow -LocalPort 22"</CommandLine>
+          <Description>Open firewall port 22</Description>
+          <RequiresUserInput>false</RequiresUserInput>
+        </SynchronousCommand>
+      </FirstLogonCommands>
+    </component>
+  </settings>
+</unattend>

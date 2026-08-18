@@ -1,0 +1,7 @@
+<network>
+  <!-- lab-dmz — /24 isolated, fw01 is gateway -->
+  <name>lab-dmz</name>
+  <bridge delay="0" name="virbr-dmz" stp="on"></bridge>
+  <ip address="10.0.2.254" netmask="255.255.255.0"></ip>
+  <dns enable="no"></dns>
+</network>
