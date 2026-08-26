@@ -1,0 +1,7 @@
+<network>
+  <!-- lab-data — /24 isolated, no DHCP (static reservations only, see oracle/README.md) -->
+  <name>lab-data</name>
+  <bridge delay="0" name="virbr-data" stp="on"></bridge>
+  <ip address="10.0.6.254" netmask="255.255.255.0"></ip>
+  <dns enable="no"></dns>
+</network>

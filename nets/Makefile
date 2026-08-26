@@ -1,11 +1,11 @@
 # Makefile for libvirt network management
-# Uses existing XML files: lab-wan.xml, lab-lan.xml, lab-dmz.xml, lab-mgmt.xml
+# Uses existing XML files: lab-wan.xml, lab-lan.xml, lab-dmz.xml, lab-mgmt.xml, lab-data.xml
 
 SHELL := /bin/bash
 CONNECT := --connect qemu:///system
 
 # Network list
-NETWORKS := lab-wan lab-lan lab-dmz lab-mgmt
+NETWORKS := lab-wan lab-lan lab-dmz lab-mgmt lab-data
 
 # XML directory (current directory since files are here)
 XML_DIR := .
@@ -36,6 +36,7 @@ create-networks: $(addprefix create-network-,$(NETWORKS))
 	@echo "  lab-lan:   10.0.1.254/24 (isolated, no DHCP)"
 	@echo "  lab-dmz:   10.0.2.254/24 (isolated)"
 	@echo "  lab-mgmt:  10.0.3.254/24 (isolated)"
+	@echo "  lab-data:  10.0.6.254/24 (isolated, no DHCP — static reservations only, see oracle/README.md)"
 
 create-network-%:
 	@echo "Creating network: $*"
@@ -162,6 +163,7 @@ verify:
 				lab-lan) expected="10.0.1.254" ;; \
 				lab-dmz) expected="10.0.2.254" ;; \
 				lab-mgmt) expected="10.0.3.254" ;; \
+				lab-data) expected="10.0.6.254" ;; \
 			esac; \
 			if [ "$$ip" = "$$expected" ]; then \
 				echo "  ✅ $$net has correct IP: $$ip"; \
