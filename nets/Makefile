@@ -1,17 +1,15 @@
 # Makefile for libvirt network management
-# Uses existing XML files: lab-wan.xml, lab-lan.xml, lab-dmz.xml, lab-mgmt.xml, lab-data.xml
+# Networks per general-nw.puml — 8 segments for fw01.ad.lab
 
-SHELL := /bin/bash
+SHELL   := /bin/bash
 CONNECT := --connect qemu:///system
 
-# Network list
-NETWORKS := lab-wan lab-lan lab-dmz lab-mgmt lab-data
+NETWORKS := lab-wan lab-app lab-dmz-web lab-mgmt lab-clients lab-dmz-vpn lab-data lab-identity
 
-# XML directory (current directory since files are here)
 XML_DIR := .
 
 .PHONY: help create-networks delete-networks list-networks start-networks stop-networks \
-        restart-networks clean status define-only undefine-only
+        restart-networks clean status define-only undefine-only verify recreate-networks info
 
 help:
 	@echo "Available targets:"
@@ -22,21 +20,24 @@ help:
 	@echo "  make stop-networks    - Stop (destroy) all networks"
 	@echo "  make restart-networks - Restart all networks"
 	@echo "  make status           - Show detailed network status (bridges, IPs)"
-	@echo "  make define-only      - Only define networks (don't start)"
-	@echo "  make undefine-only    - Only undefine networks (don't destroy)"
+	@echo "  make verify           - Verify IPs match expected topology"
+	@echo "  make info             - Full segment details: CIDR, gateway, broadcast, DHCP, DNS, hosts"
 	@echo "  make clean            - Remove inactive/undefined network definitions"
+	@echo ""
+	@echo "Network layout:"
+	@echo "  lab-wan:      10.0.0.1/30    (NAT — WAN p2p to fw01)"
+	@echo "  lab-app:      10.0.1.254/24  (isolated — app/gw/dhcp/fs/ca tier)"
+	@echo "  lab-dmz-web:  10.0.2.254/24  (isolated — waf01/web01/lb01/rodc01)"
+	@echo "  lab-mgmt:     10.0.3.254/24  (isolated — jump01/siem01/sccm01/backup01)"
+	@echo "  lab-clients:  10.0.4.254/24  (isolated — workstations, DHCP via relay)"
+	@echo "  lab-dmz-vpn:  10.0.5.254/24  (isolated — vpn01/rodc01 VPN leg)"
+	@echo "  lab-data:     10.0.6.254/24  (isolated — sql01/ora01/fs01/fs02)"
+	@echo "  lab-identity: 10.0.7.254/24  (isolated — ad01/ad02/ca01/ca02)"
 
-# Create all networks (define, start, autostart)
 create-networks: $(addprefix create-network-,$(NETWORKS))
 	@echo ""
 	@echo "✅ All networks created and started"
-	@echo ""
-	@echo "Network configuration:"
-	@echo "  lab-wan:   10.0.0.1/30   (NAT enabled)"
-	@echo "  lab-lan:   10.0.1.254/24 (isolated, no DHCP)"
-	@echo "  lab-dmz:   10.0.2.254/24 (isolated)"
-	@echo "  lab-mgmt:  10.0.3.254/24 (isolated)"
-	@echo "  lab-data:  10.0.6.254/24 (isolated, no DHCP — static reservations only, see oracle/README.md)"
+	@$(MAKE) status
 
 create-network-%:
 	@echo "Creating network: $*"
@@ -55,7 +56,6 @@ create-network-%:
 		exit 1; \
 	fi
 
-# Delete all networks (destroy and undefine)
 delete-networks: $(addprefix delete-network-,$(NETWORKS))
 	@echo "🗑️  All networks deleted"
 
@@ -64,49 +64,37 @@ delete-network-%:
 	@virsh $(CONNECT) net-destroy $* 2>/dev/null && echo "  ✅ $* stopped" || echo "  ⚠️  $* not running"
 	@virsh $(CONNECT) net-undefine $* 2>/dev/null && echo "  ✅ $* undefined" || echo "  ⚠️  $* not defined"
 
-# List all networks
 list-networks:
 	@echo "=== Libvirt Networks ==="
 	@virsh $(CONNECT) net-list --all
 
-# Start all networks
 start-networks: $(addprefix start-network-,$(NETWORKS))
 
 start-network-%:
-	@echo "Starting network: $*"
-	@virsh $(CONNECT) net-start $* 2>/dev/null && echo "  ✅ $* started" || echo "  ⚠️  $* already running or error"
+	@virsh $(CONNECT) net-start $* 2>/dev/null && echo "  ✅ $* started" || echo "  ⚠️  $* already running"
 
-# Stop all networks
 stop-networks: $(addprefix stop-network-,$(NETWORKS))
 
 stop-network-%:
-	@echo "Stopping network: $*"
-	@virsh $(CONNECT) net-destroy $* 2>/dev/null && echo "  ✅ $* stopped" || echo "  ⚠️  $* already stopped or error"
+	@virsh $(CONNECT) net-destroy $* 2>/dev/null && echo "  ✅ $* stopped" || echo "  ⚠️  $* already stopped"
 
-# Restart all networks
 restart-networks: stop-networks start-networks
 	@echo "🔄 All networks restarted"
 
-# Define only (without starting)
 define-only: $(addprefix define-,$(NETWORKS))
 
 define-%:
-	@echo "Defining network: $*"
 	@if [ -f "$(XML_DIR)/$*.xml" ]; then \
 		virsh $(CONNECT) net-define $(XML_DIR)/$*.xml && echo "  ✅ $* defined"; \
 	else \
-		echo "  ❌ Error: $(XML_DIR)/$*.xml not found"; \
-		exit 1; \
+		echo "  ❌ Error: $(XML_DIR)/$*.xml not found"; exit 1; \
 	fi
 
-# Undefine only (without destroying)
 undefine-only: $(addprefix undefine-,$(NETWORKS))
 
 undefine-%:
-	@echo "Undefining network: $*"
 	@virsh $(CONNECT) net-undefine $* 2>/dev/null && echo "  ✅ $* undefined" || echo "  ⚠️  $* not defined"
 
-# Show detailed status
 status:
 	@echo "========================================="
 	@echo "     NETWORK STATUS"
@@ -115,18 +103,12 @@ status:
 	@echo "--- Libvirt Networks ---"
 	@virsh $(CONNECT) net-list --all
 	@echo ""
-	@echo "--- Bridge Interfaces ---"
-	@brctl show 2>/dev/null || ip link show | grep -E "virbr" | sed 's/^/  /'
-	@echo ""
 	@echo "--- Bridge IP Assignments ---"
 	@for net in $(NETWORKS); do \
-		bridge=$$(virsh $(CONNECT) net-dumpxml $$net 2>/dev/null | grep -oP "name='\K[^']+" | head -1); \
-		ip=$$(virsh $(CONNECT) net-dumpxml $$net 2>/dev/null | grep -oP "address='\K[^']+" | head -1); \
-		netmask=$$(virsh $(CONNECT) net-dumpxml $$net 2>/dev/null | grep -oP "netmask='\K[^']+" | head -1); \
+		bridge=$$(virsh $(CONNECT) net-dumpxml $$net 2>/dev/null | grep -oP "name='\K[^']+"); \
+		ip=$$(virsh $(CONNECT) net-dumpxml $$net 2>/dev/null | grep -oP "<ip address='\K[^']+" | head -1); \
 		if [ -n "$$bridge" ] && [ -n "$$ip" ]; then \
-			echo "  $$net: $$bridge = $$ip/$$netmask"; \
-		elif [ -n "$$bridge" ]; then \
-			echo "  $$net: $$bridge (no IP configured)"; \
+			echo "  $$net: $$bridge = $$ip"; \
 		else \
 			echo "  $$net: not defined"; \
 		fi; \
@@ -134,10 +116,38 @@ status:
 	@echo ""
 	@echo "--- Active Bridge IPs (from host) ---"
 	@ip -4 addr show | grep -E "virbr" | grep inet | sed 's/^/  /' || echo "  No bridges active"
-	@echo ""
 	@echo "========================================="
 
-# Clean up (remove inactive networks)
+verify:
+	@echo "Verifying network configuration..."
+	@echo ""
+	@errors=0; \
+	declare -A expected=( \
+		[lab-wan]="10.0.0.1" \
+		[lab-app]="10.0.1.254" \
+		[lab-dmz-web]="10.0.2.254" \
+		[lab-mgmt]="10.0.3.254" \
+		[lab-clients]="10.0.4.254" \
+		[lab-dmz-vpn]="10.0.5.254" \
+		[lab-data]="10.0.6.254" \
+		[lab-identity]="10.0.7.254" \
+	); \
+	for net in $(NETWORKS); do \
+		if ! virsh $(CONNECT) net-list --all | grep -qE "^\s+$$net\s+active"; then \
+			echo "  ❌ $$net not active"; errors=$$((errors+1)); \
+		else \
+			ip=$$(virsh $(CONNECT) net-dumpxml $$net 2>/dev/null | grep -oP "<ip address='\K[^']+" | head -1); \
+			if [ "$$ip" = "$${expected[$$net]}" ]; then \
+				echo "  ✅ $$net → $$ip"; \
+			else \
+				echo "  ❌ $$net has $$ip, expected $${expected[$$net]}"; \
+				errors=$$((errors+1)); \
+			fi; \
+		fi; \
+	done; \
+	echo ""; \
+	[ $$errors -eq 0 ] && echo "✅ All networks verified" || { echo "❌ $$errors issue(s) found"; exit 1; }
+
 clean:
 	@echo "Cleaning up inactive networks..."
 	@for net in $$(virsh $(CONNECT) net-list --inactive --name 2>/dev/null); do \
@@ -146,44 +156,50 @@ clean:
 	done
 	@echo "✅ Cleanup complete"
 
-# Verify network configuration matches expected
-verify:
-	@echo "Verifying network configuration..."
-	@echo ""
-	@errors=0; \
-	for net in $(NETWORKS); do \
-		echo "Checking $$net..."; \
-		if ! virsh $(CONNECT) net-list --all | grep -q "$$net.*active"; then \
-			echo "  ❌ $$net is not active"; \
-			errors=$$((errors + 1)); \
-		else \
-			ip=$$(virsh $(CONNECT) net-dumpxml $$net 2>/dev/null | grep -oP "address='\K[^']+" | head -1); \
-			case $$net in \
-				lab-wan) expected="10.0.0.1" ;; \
-				lab-lan) expected="10.0.1.254" ;; \
-				lab-dmz) expected="10.0.2.254" ;; \
-				lab-mgmt) expected="10.0.3.254" ;; \
-				lab-data) expected="10.0.6.254" ;; \
-			esac; \
-			if [ "$$ip" = "$$expected" ]; then \
-				echo "  ✅ $$net has correct IP: $$ip"; \
-			else \
-				echo "  ❌ $$net has IP $$ip, expected $$expected"; \
-				errors=$$((errors + 1)); \
-			fi; \
-		fi; \
-	done; \
-	echo ""; \
-	if [ $$errors -eq 0 ]; then \
-		echo "✅ All networks verified successfully"; \
-	else \
-		echo "❌ $$errors network(s) have issues"; \
-		exit 1; \
-	fi
-
-# Recreate networks (delete then create)
 recreate-networks: delete-networks create-networks
-	@echo "🔄 Networks recreated"
 
-# Default target
 all: help
+
+info:
+	@echo ""
+	@echo "  ad.lab — NETWORK SEGMENTS"
+	@echo ""
+	@printf "  %-3s %-14s %-16s %-16s %-15s %-9s %-4s %-22s\n" \
+		"" "NETWORK" "CIDR" "GATEWAY" "BRIDGE" "MODE" "DNS" "DHCP RANGE"
+	@echo "  ───────────────────────────────────────────────────────────────────────────────────────────────────"
+	@for net in $(NETWORKS); do \
+		xml=$$(virsh $(CONNECT) net-dumpxml $$net 2>/dev/null); \
+		if [ -z "$$xml" ]; then \
+			printf "  %-3s %-14s %-16s\n" "⚠️" "$$net" "not defined"; \
+			continue; \
+		fi; \
+		bridge=$$(echo "$$xml"    | grep -oP "<bridge name='\K[^']+"  | head -1); \
+		ip=$$(echo "$$xml"        | grep -oP "<ip address='\K[^']+"   | head -1); \
+		mask=$$(echo "$$xml"      | grep -oP "netmask='\K[^']+"       | head -1); \
+		fwd=$$(echo "$$xml"       | grep -oP "<forward mode='\K[^']+" | head -1); \
+		dns=$$(echo "$$xml"       | grep -oP "<dns enable='\K[^']+"   | head -1); \
+		dhcp_from=$$(echo "$$xml" | grep -oP "<range from='\K[^']+"   | head -1); \
+		dhcp_to=$$(echo "$$xml"   | grep -oP "to='\K[^']+"            | head -1); \
+		state=$$(virsh $(CONNECT) net-list --all | awk -v n="$$net" '$$1==n{print $$2}'); \
+		\
+		[ -z "$$fwd" ]     && fwd="isolated"; \
+		[ -z "$$dns" ]     && dns="no"; \
+		[ "$$dns" = "no" ] && dns_str="off" || dns_str="on"; \
+		\
+		prefix=$$(python3 -c "import ipaddress; print(ipaddress.IPv4Network('0.0.0.0/'+'$$mask').prefixlen)" 2>/dev/null || echo "?"); \
+		cidr=$$(python3 -c "import ipaddress; print(ipaddress.IPv4Interface('$$ip/$$prefix').network)" 2>/dev/null || echo "$$ip/$$prefix"); \
+		gw="$$ip/$$prefix"; \
+		\
+		if [ -n "$$dhcp_from" ] && [ -n "$$dhcp_to" ]; then \
+			dhcp="$$dhcp_from–$$dhcp_to"; \
+		else \
+			dhcp="static only"; \
+		fi; \
+		\
+		[ "$$state" = "active" ] && icon="🟢" || icon="🔴"; \
+		\
+		printf "  %-3s %-14s %-16s %-16s %-15s %-9s %-4s %-22s\n" \
+			"$$icon" "$$net" "$$cidr" "$$gw" "$$bridge" "$$fwd" "$$dns_str" "$$dhcp"; \
+	done
+	@echo "  ───────────────────────────────────────────────────────────────────────────────────────────────────"
+	@echo ""

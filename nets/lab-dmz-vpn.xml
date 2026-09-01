@@ -1,0 +1,9 @@
+<network>
+  <!-- lab-dmz-vpn — 10.0.5.0/24 isolated, fw01 is gateway (10.0.5.1) -->
+  <!-- Hosts: vpn01 (10.0.5.10, single-armed), rodc01 (10.0.5.15, VPN leg) -->
+  <!-- No DHCP — all static. vpn01 has no LAN NIC; fw01 routes decrypted traffic. -->
+  <name>lab-dmz-vpn</name>
+  <bridge delay="0" name="virbr-dmzvpn" stp="on"></bridge>
+  <ip address="10.0.5.254" netmask="255.255.255.0"></ip>
+  <dns enable="no"></dns>
+</network>

@@ -1,0 +1,9 @@
+<network>
+  <!-- lab-app — 10.0.1.0/24 isolated, fw01 is gateway (10.0.1.1) -->
+  <!-- Hosts: api_gw01, api_gw02, app01, dhcp01, fs01, fs02, ca01, ca02 -->
+  <!-- DHCP scope .50-.200 served by fw01 relay → dhcp01 (10.0.1.30) -->
+  <name>lab-app</name>
+  <bridge delay="0" name="virbr-app" stp="on"></bridge>
+  <ip address="10.0.1.254" netmask="255.255.255.0"></ip>
+  <dns enable="no"></dns>
+</network>

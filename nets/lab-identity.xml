@@ -1,0 +1,10 @@
+<network>
+  <!-- lab-identity — 10.0.7.0/24 isolated, fw01 is gateway (10.0.7.1) -->
+  <!-- Hosts: ad01 (10.0.7.10), ad02 (10.0.7.11), ca01 (10.0.7.20), ca02 (10.0.7.21) -->
+  <!-- No DHCP — all static. No internet access. No outbound from this segment. -->
+  <!-- ca01 NIC should be unconfigured/disconnected during normal operations. -->
+  <name>lab-identity</name>
+  <bridge delay="0" name="virbr-identity" stp="on"></bridge>
+  <ip address="10.0.7.254" netmask="255.255.255.0"></ip>
+  <dns enable="no"></dns>
+</network>
