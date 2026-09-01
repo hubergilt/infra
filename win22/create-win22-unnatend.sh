@@ -7,7 +7,7 @@
 set -e
 
 VM_NAME="${1:-win22}"
-ORIG_ISO="/home/huber/Downloads/en-us_windows_server_2022_updated_march_2026_x64_dvd_3f772967.iso"
+ORIG_ISO="/home/huber/Downloads/en-us_windows_server_2022_updated_aug_2026_x64_dvd_f5ac19b0.iso"
 ANSWER_FILE="$(pwd)/autounattend.xml"
 NEW_ISO="$(pwd)/${VM_NAME}-unattended.iso"
 WORK_DIR="/tmp/${VM_NAME}-iso-work"
