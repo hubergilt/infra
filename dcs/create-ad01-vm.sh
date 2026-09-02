@@ -1,10 +1,16 @@
 #!/bin/bash
 # create-ad01-vm.sh
-# Creates the ad01 VM (Windows Server 2019 Core) — unattended OS install.
-# Reuses the golden autounattend.xml + NetKVM driver set from ../win19/.
-# After first boot, run phase3-ad01.ps1 (or phase3-ad01-unattended.ps1)
-# inside the guest to rename it to AD01, set its static IP, and promote
-# it as the ad.lab forest root.
+# Creates the ad01 VM (Windows Server 2019 Core) — fully unattended OS
+# install AND fully unattended AD DS forest-root promotion.
+#
+# Unlike the earlier version of this script, the answer file is a custom
+# copy that lives in this folder (ad01-autounattend.xml) instead of a
+# reference to ../win19/autounattend.xml — hostname (AD01) and static IP
+# (10.0.7.10/24) are baked in directly, and its FirstLogonCommands stage
+# phase3-ad01-unattended.ps1 onto the guest and launch it once. From there
+# the guest promotes itself to the ad.lab forest root with zero console
+# interaction: OS install -> first boot -> AD DS/DNS install -> promote ->
+# reboot -> verify. See dcs/README.md section 7 for how the chain works.
 #
 # Requirements: p7zip-full, genisoimage, qemu-utils, virtinst, ovmf
 #   apt install p7zip-full genisoimage qemu-utils virtinst ovmf
@@ -16,7 +22,8 @@ set -e
 
 VM_NAME="${1:-ad01}"
 ORIG_ISO="/home/huber/Downloads/en-us_windows_server_2019_x64_dvd_f9475476.iso"
-ANSWER_FILE="$(pwd)/../win19/autounattend.xml"
+ANSWER_FILE="$(pwd)/ad01-autounattend.xml"
+PROVISION_SCRIPT="$(pwd)/phase3-ad01-unattended.ps1"
 NEW_ISO="$(pwd)/${VM_NAME}-unattended.iso"
 WORK_DIR="/tmp/${VM_NAME}-iso-work"
 DISK_PATH="/vms/${VM_NAME}.qcow2"
@@ -36,8 +43,9 @@ for cmd in 7z genisoimage qemu-img virt-install; do
   }
 done
 
-[ ! -f "$ORIG_ISO" ]    && echo "ERROR: ISO not found: $ORIG_ISO"            && exit 1
-[ ! -f "$ANSWER_FILE" ] && echo "ERROR: Answer file not found: $ANSWER_FILE (expected in ../win19/)" && exit 1
+[ ! -f "$ORIG_ISO" ]         && echo "ERROR: ISO not found: $ORIG_ISO"                                   && exit 1
+[ ! -f "$ANSWER_FILE" ]      && echo "ERROR: Answer file not found: $ANSWER_FILE (expected in dcs/)"      && exit 1
+[ ! -f "$PROVISION_SCRIPT" ] && echo "ERROR: Provisioning script not found: $PROVISION_SCRIPT"            && exit 1
 
 # Check OVMF firmware is available for UEFI
 if [ ! -f /usr/share/OVMF/OVMF_CODE.fd ] && [ ! -f /usr/share/ovmf/OVMF.fd ]; then
@@ -52,8 +60,8 @@ echo "[1/5] Extracting ISO..."
 rm -rf "$WORK_DIR" && mkdir -p "$WORK_DIR"
 7z x "$ORIG_ISO" -o"$WORK_DIR" -y > /dev/null
 
-# 2. Inject answer file + VirtIO network driver
-echo "[2/5] Injecting autounattend.xml and NetKVM VirtIO driver..."
+# 2. Inject answer file, NetKVM VirtIO driver, and the DC promotion script
+echo "[2/5] Injecting ad01-autounattend.xml, NetKVM driver, and Provision\\phase3-ad01-unattended.ps1..."
 cp "$ANSWER_FILE" "$WORK_DIR/autounattend.xml"
 
 if [ ! -d "$NETKVM_SRC" ]; then
@@ -63,6 +71,9 @@ if [ ! -d "$NETKVM_SRC" ]; then
   exit 1
 fi
 cp -r "$NETKVM_SRC" "$NETKVM_DST"
+
+mkdir -p "$WORK_DIR/Provision"
+cp "$PROVISION_SCRIPT" "$WORK_DIR/Provision/phase3-ad01-unattended.ps1"
 
 # 3. Rebuild bootable ISO
 echo "[3/5] Rebuilding ISO at $NEW_ISO ..."
@@ -113,6 +124,10 @@ echo "  Watch progress : virt-viewer $VM_NAME"
 echo "  Check state    : virsh domstate $VM_NAME"
 echo "  List VMs       : virsh list --all"
 echo ""
-echo "NEXT: once Windows Setup finishes and the guest boots to a shell,"
-echo "  copy phase3-ad01.ps1 (or phase3-ad01-unattended.ps1) in and run it"
-echo "  to rename to AD01, set 10.0.7.10/24, and promote the ad.lab forest root."
+echo "NEXT: nothing to do by hand. Once Windows Setup finishes, ad01 renames"
+echo "  itself to AD01, sets 10.0.7.10/24, installs AD DS + DNS, and promotes"
+echo "  itself as the ad.lab forest root automatically, rebooting as needed."
+echo "  Track progress from inside the guest:"
+echo "    Get-Content C:\\ProvisionState\\ad01-unattended.log -Wait"
+echo "    Get-Content C:\\ProvisionState\\ad01.stage   (0=installing AD DS, 1=promoted, 2=verified)"
+echo "  Once ad01.stage reaches 2, run ./create-ad02-vm.sh."

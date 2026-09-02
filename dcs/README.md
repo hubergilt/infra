@@ -1,6 +1,6 @@
 # ad.lab Domain Controllers — Phase 3 Reference Guide
 
-## Forest Root + Replica DC, and Unattended Promotion
+## Forest Root + Replica DC, Fully Unattended
 
 ---
 
@@ -21,16 +21,18 @@ Phase 3 stands up the identity tier for the ad.lab domain: a forest-root DC (ad0
 | Network          | lab-identity (10.0.7.0/24) |
 | Gateway          | 10.0.7.254 |
 
+**This folder is fully self-contained and fully unattended.** Running `create-ad01-vm.sh` takes a blank VM all the way to a verified, promoted forest root with zero console interaction, and `create-ad02-vm.sh` does the same for the replica once ad01 is up. Nobody needs to log into either guest at any point.
+
 ---
 
 ## 2. VM Creation
 
-Both DCs are built the same way the rest of this repo builds Windows VMs: unattended OS install via `virt-install` + a rebuilt install ISO carrying `autounattend.xml` and the VirtIO NetKVM driver, reusing the golden answer files already in `../win19/` and `../win22/`. VM naming/IP is generic at this stage (`WIN19`/`WIN22`, placeholder IP) — the Phase 3 scripts in Section 6 do the actual rename to `AD01`/`AD02` and set the final static IP once the guest is up.
+Both DCs are built the same way the rest of this repo builds Windows VMs: unattended OS install via `virt-install` + a rebuilt install ISO carrying a custom `autounattend.xml`, the VirtIO NetKVM driver, and a `Provision\` folder with the DC-promotion PowerShell script. Unlike the rest of the repo, **the answer files here are local to `dcs/`** (`ad01-autounattend.xml`, `ad02-autounattend.xml`) instead of references to `../win19/autounattend.xml` / `../win22/autounattend.xml` — hostname (`AD01`/`AD02`) and the final static IP are baked straight into them, so there's no post-install rename/reboot step left to run by hand. Only the NetKVM driver folders are still pulled from `../win19/NetKVM` and `../win22/NetKVM`, since those are just the shared vendor driver binaries, not answer-file references.
 
-| Script               | Base image                | VM name | os-variant | Disk  | RAM    | vCPUs |
-| -------------------- | -------------------------- | ------- | ---------- | ----- | ------ | ----- |
-| `create-ad01-vm.sh`  | Windows Server 2019 (../win19/) | ad01    | win2k19    | 50 GB | 2048 MB | 2     |
-| `create-ad02-vm.sh`  | Windows Server 2022 (../win22/) | ad02    | win2k22    | 50 GB | 2048 MB | 2     |
+| Script               | Answer file (local)        | Base ISO                         | VM name | os-variant | Disk  | RAM    | vCPUs |
+| -------------------- | --------------------------- | --------------------------------- | ------- | ---------- | ----- | ------ | ----- |
+| `create-ad01-vm.sh`  | `ad01-autounattend.xml`     | Windows Server 2019               | ad01    | win2k19    | 50 GB | 2048 MB | 2     |
+| `create-ad02-vm.sh`  | `ad02-autounattend.xml`     | Windows Server 2022               | ad02    | win2k22    | 50 GB | 2048 MB | 2     |
 
 Requirements on the libvirt host: `p7zip-full`, `genisoimage`, `qemu-utils`, `virtinst`, `ovmf`.
 
@@ -38,16 +40,34 @@ Requirements on the libvirt host: `p7zip-full`, `genisoimage`, `qemu-utils`, `vi
 apt install p7zip-full genisoimage qemu-utils virtinst ovmf
 ```
 
-### 2.1 create-ad01-vm.sh
+### 2.1 What the answer files bake in
+
+`ad01-autounattend.xml` and `ad02-autounattend.xml` are forks of the `win19`/`win22` golden copies with three differences:
+
+1. `ComputerName` is `AD01` / `AD02` directly — no `Rename-Computer` + reboot needed afterward.
+2. The static IP is `10.0.7.10/24` / `10.0.7.11/24` on `lab-identity`, gateway `10.0.7.254` (ad02's DNS search order also points at ad01 first, itself second).
+3. `FirstLogonCommands` gains two extra steps beyond the usual OpenSSH bootstrap:
+   - copy `D:\Provision\phase3-ad0X-unattended.ps1` (staged onto the ISO by the `create-ad0X-vm.sh` script) to `C:\Provision\`
+   - launch it once with `powershell.exe -File C:\Provision\phase3-ad0X-unattended.ps1`
+
+That single launch is enough — the script re-arms itself via a scheduled task across every reboot the promotion process triggers. See Section 7.
+
+### 2.2 create-ad01-vm.sh
 
 ```bash
 #!/bin/bash
 # create-ad01-vm.sh
-# Creates the ad01 VM (Windows Server 2019 Core) — unattended OS install.
-# Reuses the golden autounattend.xml + NetKVM driver set from ../win19/.
-# After first boot, run phase3-ad01.ps1 (or phase3-ad01-unattended.ps1)
-# inside the guest to rename it to AD01, set its static IP, and promote
-# it as the ad.lab forest root.
+# Creates the ad01 VM (Windows Server 2019 Core) — fully unattended OS
+# install AND fully unattended AD DS forest-root promotion.
+#
+# Unlike the earlier version of this script, the answer file is a custom
+# copy that lives in this folder (ad01-autounattend.xml) instead of a
+# reference to ../win19/autounattend.xml — hostname (AD01) and static IP
+# (10.0.7.10/24) are baked in directly, and its FirstLogonCommands stage
+# phase3-ad01-unattended.ps1 onto the guest and launch it once. From there
+# the guest promotes itself to the ad.lab forest root with zero console
+# interaction: OS install -> first boot -> AD DS/DNS install -> promote ->
+# reboot -> verify. See dcs/README.md section 7 for how the chain works.
 #
 # Requirements: p7zip-full, genisoimage, qemu-utils, virtinst, ovmf
 #   apt install p7zip-full genisoimage qemu-utils virtinst ovmf
@@ -59,7 +79,8 @@ set -e
 
 VM_NAME="${1:-ad01}"
 ORIG_ISO="/home/huber/Downloads/en-us_windows_server_2019_x64_dvd_f9475476.iso"
-ANSWER_FILE="$(pwd)/../win19/autounattend.xml"
+ANSWER_FILE="$(pwd)/ad01-autounattend.xml"
+PROVISION_SCRIPT="$(pwd)/phase3-ad01-unattended.ps1"
 NEW_ISO="$(pwd)/${VM_NAME}-unattended.iso"
 WORK_DIR="/tmp/${VM_NAME}-iso-work"
 DISK_PATH="/vms/${VM_NAME}.qcow2"
@@ -79,8 +100,9 @@ for cmd in 7z genisoimage qemu-img virt-install; do
   }
 done
 
-[ ! -f "$ORIG_ISO" ]    && echo "ERROR: ISO not found: $ORIG_ISO"            && exit 1
-[ ! -f "$ANSWER_FILE" ] && echo "ERROR: Answer file not found: $ANSWER_FILE (expected in ../win19/)" && exit 1
+[ ! -f "$ORIG_ISO" ]         && echo "ERROR: ISO not found: $ORIG_ISO"                                   && exit 1
+[ ! -f "$ANSWER_FILE" ]      && echo "ERROR: Answer file not found: $ANSWER_FILE (expected in dcs/)"      && exit 1
+[ ! -f "$PROVISION_SCRIPT" ] && echo "ERROR: Provisioning script not found: $PROVISION_SCRIPT"            && exit 1
 
 # Check OVMF firmware is available for UEFI
 if [ ! -f /usr/share/OVMF/OVMF_CODE.fd ] && [ ! -f /usr/share/ovmf/OVMF.fd ]; then
@@ -95,8 +117,8 @@ echo "[1/5] Extracting ISO..."
 rm -rf "$WORK_DIR" && mkdir -p "$WORK_DIR"
 7z x "$ORIG_ISO" -o"$WORK_DIR" -y > /dev/null
 
-# 2. Inject answer file + VirtIO network driver
-echo "[2/5] Injecting autounattend.xml and NetKVM VirtIO driver..."
+# 2. Inject answer file, NetKVM VirtIO driver, and the DC promotion script
+echo "[2/5] Injecting ad01-autounattend.xml, NetKVM driver, and Provision\\phase3-ad01-unattended.ps1..."
 cp "$ANSWER_FILE" "$WORK_DIR/autounattend.xml"
 
 if [ ! -d "$NETKVM_SRC" ]; then
@@ -106,6 +128,9 @@ if [ ! -d "$NETKVM_SRC" ]; then
   exit 1
 fi
 cp -r "$NETKVM_SRC" "$NETKVM_DST"
+
+mkdir -p "$WORK_DIR/Provision"
+cp "$PROVISION_SCRIPT" "$WORK_DIR/Provision/phase3-ad01-unattended.ps1"
 
 # 3. Rebuild bootable ISO
 echo "[3/5] Rebuilding ISO at $NEW_ISO ..."
@@ -156,25 +181,35 @@ echo "  Watch progress : virt-viewer $VM_NAME"
 echo "  Check state    : virsh domstate $VM_NAME"
 echo "  List VMs       : virsh list --all"
 echo ""
-echo "NEXT: once Windows Setup finishes and the guest boots to a shell,"
-echo "  copy phase3-ad01.ps1 (or phase3-ad01-unattended.ps1) in and run it"
-echo "  to rename to AD01, set 10.0.7.10/24, and promote the ad.lab forest root."
+echo "NEXT: nothing to do by hand. Once Windows Setup finishes, ad01 renames"
+echo "  itself to AD01, sets 10.0.7.10/24, installs AD DS + DNS, and promotes"
+echo "  itself as the ad.lab forest root automatically, rebooting as needed."
+echo "  Track progress from inside the guest:"
+echo "    Get-Content C:\\ProvisionState\\ad01-unattended.log -Wait"
+echo "    Get-Content C:\\ProvisionState\\ad01.stage   (0=installing AD DS, 1=promoted, 2=verified)"
+echo "  Once ad01.stage reaches 2, run ./create-ad02-vm.sh."
 ```
 
-### 2.2 create-ad02-vm.sh
+### 2.3 create-ad02-vm.sh
 
 ```bash
 #!/bin/bash
 # create-ad02-vm.sh
-# Creates the ad02 VM (Windows Server 2022 Core) — unattended OS install.
-# Reuses the golden autounattend.xml + NetKVM driver set from ../win22/.
-# After first boot, run phase3-ad02.ps1 (or phase3-ad02-unattended.ps1)
-# inside the guest to rename it to AD02, set its static IP, and promote
-# it as a replica DC for ad.lab.
+# Creates the ad02 VM (Windows Server 2022 Core) — fully unattended OS
+# install AND fully unattended replica-DC promotion.
 #
-# PREREQUISITE: ad01 must already be created and promoted (see
-# create-ad01-vm.sh and phase3-ad01.ps1 / phase3-ad01-verify.ps1) before
-# ad02 is promoted — VM creation itself has no such dependency.
+# Unlike the earlier version of this script, the answer file is a custom
+# copy that lives in this folder (ad02-autounattend.xml) instead of a
+# reference to ../win22/autounattend.xml — hostname (AD02) and static IP
+# (10.0.7.11/24) are baked in directly, and its FirstLogonCommands stage
+# phase3-ad02-unattended.ps1 onto the guest and launch it once. From there
+# the guest waits for ad01 on its own (retrying every 2 minutes, no manual
+# rerun needed) and promotes itself as a replica DC once ad01 answers.
+# See dcs/README.md section 7 for how the chain works.
+#
+# PREREQUISITE: ad01 should already be created and promoted (see
+# create-ad01-vm.sh) before ad02 is promoted — VM creation itself has no
+# such dependency, and ad02 will simply keep retrying until ad01 answers.
 #
 # Requirements: p7zip-full, genisoimage, qemu-utils, virtinst, ovmf
 #   apt install p7zip-full genisoimage qemu-utils virtinst ovmf
@@ -186,7 +221,8 @@ set -e
 
 VM_NAME="${1:-ad02}"
 ORIG_ISO="/home/huber/Downloads/en-us_windows_server_2022_updated_aug_2026_x64_dvd_f5ac19b0.iso"
-ANSWER_FILE="$(pwd)/../win22/autounattend.xml"
+ANSWER_FILE="$(pwd)/ad02-autounattend.xml"
+PROVISION_SCRIPT="$(pwd)/phase3-ad02-unattended.ps1"
 NEW_ISO="$(pwd)/${VM_NAME}-unattended.iso"
 WORK_DIR="/tmp/${VM_NAME}-iso-work"
 DISK_PATH="/vms/${VM_NAME}.qcow2"
@@ -206,8 +242,9 @@ for cmd in 7z genisoimage qemu-img virt-install; do
   }
 done
 
-[ ! -f "$ORIG_ISO" ]    && echo "ERROR: ISO not found: $ORIG_ISO"            && exit 1
-[ ! -f "$ANSWER_FILE" ] && echo "ERROR: Answer file not found: $ANSWER_FILE (expected in ../win22/)" && exit 1
+[ ! -f "$ORIG_ISO" ]         && echo "ERROR: ISO not found: $ORIG_ISO"                                   && exit 1
+[ ! -f "$ANSWER_FILE" ]      && echo "ERROR: Answer file not found: $ANSWER_FILE (expected in dcs/)"      && exit 1
+[ ! -f "$PROVISION_SCRIPT" ] && echo "ERROR: Provisioning script not found: $PROVISION_SCRIPT"            && exit 1
 
 # Check OVMF firmware is available for UEFI
 if [ ! -f /usr/share/OVMF/OVMF_CODE.fd ] && [ ! -f /usr/share/ovmf/OVMF.fd ]; then
@@ -222,8 +259,8 @@ echo "[1/5] Extracting ISO..."
 rm -rf "$WORK_DIR" && mkdir -p "$WORK_DIR"
 7z x "$ORIG_ISO" -o"$WORK_DIR" -y > /dev/null
 
-# 2. Inject answer file + VirtIO network driver
-echo "[2/5] Injecting autounattend.xml and NetKVM VirtIO driver..."
+# 2. Inject answer file, NetKVM VirtIO driver, and the DC promotion script
+echo "[2/5] Injecting ad02-autounattend.xml, NetKVM driver, and Provision\\phase3-ad02-unattended.ps1..."
 cp "$ANSWER_FILE" "$WORK_DIR/autounattend.xml"
 
 if [ ! -d "$NETKVM_SRC" ]; then
@@ -232,6 +269,9 @@ if [ ! -d "$NETKVM_SRC" ]; then
   exit 1
 fi
 cp -r "$NETKVM_SRC" "$NETKVM_DST"
+
+mkdir -p "$WORK_DIR/Provision"
+cp "$PROVISION_SCRIPT" "$WORK_DIR/Provision/phase3-ad02-unattended.ps1"
 
 # 3. Rebuild bootable ISO
 echo "[3/5] Rebuilding ISO at $NEW_ISO ..."
@@ -282,10 +322,13 @@ echo "  Watch progress : virt-viewer $VM_NAME"
 echo "  Check state    : virsh domstate $VM_NAME"
 echo "  List VMs       : virsh list --all"
 echo ""
-echo "NEXT: once Windows Setup finishes and the guest boots to a shell,"
-echo "  copy phase3-ad02.ps1 (or phase3-ad02-unattended.ps1) in and run it"
-echo "  to rename to AD02, set 10.0.7.11/24, and promote as a replica DC"
-echo "  for ad.lab. ad01 must already be promoted and verified first."
+echo "NEXT: nothing to do by hand. Once Windows Setup finishes, ad02 renames"
+echo "  itself to AD02, sets 10.0.7.11/24, waits for ad01 to answer (retrying"
+echo "  every 2 minutes on its own), installs AD DS, and promotes itself as a"
+echo "  replica DC for ad.lab automatically, rebooting as needed."
+echo "  Track progress from inside the guest:"
+echo "    Get-Content C:\\ProvisionState\\ad02-unattended.log -Wait"
+echo "    Get-Content C:\\ProvisionState\\ad02.stage   (0=waiting/installing, 1=promoted, 2=verified)"
 ```
 
 ---
@@ -358,331 +401,66 @@ See `identity-nw.puml` for the full lab topology (WAN, DMZ-Web, DMZ-VPN, Identit
 
 ## 4. Prerequisites
 
-Before running any Phase 3 script:
+Before running either script:
 
-- ad01 and ad02 must be running Server Core (2019 and 2022 respectively) on the identity network, with no prior IP or hostname configuration
-- `AD-Domain-Services` and `DNS` Windows features must be installable (no pending reboot blocking `Install-WindowsFeature`)
-- Network path from ad02 to ad01 on 10.0.7.10 must be reachable before promoting ad02
-- Know the DSRM (Directory Services Restore Mode) password ahead of time — this repo's lab convention is `Server2012!` for every VM, matching the PKI phase
+- The base ISOs (`ORIG_ISO` in each `create-ad0X-vm.sh`) must exist at the paths hardcoded at the top of the script — edit those paths if your download location differs.
+- `../win19/NetKVM/` and `../win22/NetKVM/` must contain the VirtIO NetKVM driver set (`w2k19`/`w2k22`, `amd64`) — see the `ERROR` messages in each script for the download source.
+- `p7zip-full`, `genisoimage`, `qemu-utils`, `virtinst`, `ovmf` installed on the libvirt host (Section 2).
+- The `lab-identity` libvirt network must already exist (`../nets/lab-identity.xml`).
+- Nothing else — no DSRM password, no domain credentials, no manual OS knowledge is needed at run time. Both are hardcoded lab-only defaults (`Server2012!`) inside `phase3-ad01-unattended.ps1` / `phase3-ad02-unattended.ps1`, matching this repo's existing convention (Section 7.3).
 
 ---
 
 ## 5. Run Order
 
 ```
-Step 0  host  create-ad01-vm.sh        Unattended OS install for ad01 (Windows Server 2019 Core)
-        host  create-ad02-vm.sh        Unattended OS install for ad02 (Windows Server 2022 Core)
-                                        Both can run in parallel — no dependency between them
-                                        at the VM-creation stage. See Section 2.
+Step 0  host  ./create-ad01-vm.sh     Unattended OS install for ad01 (Windows Server 2019 Core).
+                                       No further action needed: FirstLogonCommands in
+                                       ad01-autounattend.xml stage and launch
+                                       phase3-ad01-unattended.ps1, which installs AD DS + DNS
+                                       and promotes ad01 as forest root for ad.lab, rebooting
+                                       and resuming on its own until verified.
 
-Step 1  ad01  phase3-ad01.ps1          Rename, set static IP, install AD-Domain-Services + DNS,
-                                        promote as forest root for ad.lab
-                                        (reboots automatically on completion)
+                                       Wait for C:\ProvisionState\ad01.stage to reach 2
+                                       (or tail C:\ProvisionState\ad01-unattended.log) before
+                                       moving to Step 1.
 
-Step 2  ad01  phase3-ad01-verify.ps1   Run after reboot — confirms domain, forest, DNS, FSMO roles
+Step 1  host  ./create-ad02-vm.sh     Unattended OS install for ad02 (Windows Server 2022 Core).
+                                       No further action needed: FirstLogonCommands in
+                                       ad02-autounattend.xml stage and launch
+                                       phase3-ad02-unattended.ps1, which waits for ad01 to
+                                       answer (retrying every 2 minutes with no manual rerun),
+                                       installs AD DS, and promotes ad02 as a replica DC,
+                                       rebooting and resuming on its own until verified.
 
-Step 3  ad02  phase3-ad02.ps1          Rename (reboots), rerun, set static IP, verify ad01
-                                        reachable, install AD-Domain-Services, promote as replica
-                                        (prompts for ADLAB\Administrator credentials)
-
-Step 4  ad02  phase3-ad02-verify.ps1   Run after reboot — confirms replication, DCDiag, DNS zones
+                                       Can be run any time after Step 0 — even immediately,
+                                       since ad02 will simply keep retrying until ad01 is
+                                       reachable. C:\ProvisionState\ad02.stage reaches 2 once
+                                       replication is verified.
 ```
+
+That's the entire flow — from blank VM to two verified, replicating domain controllers, with no console login, no `Get-Credential` prompt, and no manual rename/IP/reboot step on either guest.
 
 ---
 
 ## 6. Scripts
 
-### 6.1 phase3-ad01.ps1 — Forest root promotion
+### 6.1 phase3-ad01-unattended.ps1 — forest root, no prompts
 
-Run on ad01. Sets a static IP, installs AD DS + DNS, and promotes the forest. Reboots automatically when done.
-
-```powershell
-# phase3-ad01.ps1
-# Run on ad01 (win19) — Windows Server Core
-# Promotes ad01 as primary DC and forest root for ad.lab
-# IP: 10.0.7.10/24  GW: 10.0.7.254  DNS: 127.0.0.1
-
-#Requires -RunAsAdministrator
-Set-StrictMode -Version Latest
-$ErrorActionPreference = 'Stop'
-
-# ── Step 1 — Rename computer ──────────────────────────────────
-Write-Host "[1/5] Renaming computer to ad01..." -ForegroundColor Cyan
-$currentName = $env:COMPUTERNAME
-if ($currentName -ne 'AD01') {
-    Rename-Computer -NewName 'AD01' -Force
-    Write-Host "     Renamed from $currentName to AD01. Will apply after reboot." -ForegroundColor Yellow
-} else {
-    Write-Host "     Already named AD01, skipping." -ForegroundColor Green
-}
-
-# ── Step 2 — Set static IP ────────────────────────────────────
-Write-Host "[2/5] Configuring static IP 10.0.7.10/24..." -ForegroundColor Cyan
-$ifIndex = (Get-NetAdapter | Where-Object { $_.Status -eq 'Up' }).InterfaceIndex
-
-Remove-NetIPAddress -InterfaceIndex $ifIndex -Confirm:$false -ErrorAction SilentlyContinue
-Remove-NetRoute -InterfaceIndex $ifIndex -Confirm:$false -ErrorAction SilentlyContinue
-
-New-NetIPAddress `
-    -InterfaceIndex  $ifIndex `
-    -IPAddress       '10.0.7.10' `
-    -PrefixLength    24 `
-    -DefaultGateway  '10.0.7.254'
-
-Set-DnsClientServerAddress `
-    -InterfaceIndex  $ifIndex `
-    -ServerAddresses '127.0.0.1','10.0.7.10'
-
-Write-Host "     IP set. Verifying..." -ForegroundColor Green
-Get-NetIPAddress -InterfaceIndex $ifIndex -AddressFamily IPv4 |
-    Select-Object IPAddress, PrefixLength
-
-# ── Step 3 — Install AD DS + DNS ─────────────────────────────
-Write-Host "[3/5] Installing AD DS and DNS features..." -ForegroundColor Cyan
-Install-WindowsFeature `
-    -Name AD-Domain-Services, DNS `
-    -IncludeManagementTools
-
-Write-Host "     Features installed." -ForegroundColor Green
-
-# ── Step 4 — Promote as forest root ──────────────────────────
-Write-Host "[4/5] Promoting ad01 as forest root for ad.lab..." -ForegroundColor Cyan
-Write-Host "     This will reboot automatically when complete." -ForegroundColor Yellow
-
-$safeModePassword = ConvertTo-SecureString `
-    'Server2012!' -AsPlainText -Force
-
-Install-ADDSForest `
-    -DomainName                    'ad.lab' `
-    -DomainNetbiosName             'ADLAB' `
-    -ForestMode                    'WinThreshold' `
-    -DomainMode                    'WinThreshold' `
-    -InstallDns `
-    -SafeModeAdministratorPassword $safeModePassword `
-    -NoRebootOnCompletion:$false `
-    -Force
-
-# ── Step 5 — Post-reboot verification (run after reboot) ──────
-# After reboot run: .\phase3-ad01-verify.ps1
-Write-Host "[5/5] Promotion triggered. VM will reboot..." -ForegroundColor Green
-```
-
-### 6.2 phase3-ad01-verify.ps1 — Post-promotion checks
-
-```powershell
-# phase3-ad01-verify.ps1
-# Run on ad01 AFTER reboot to verify AD DS and DNS are healthy
-
-#Requires -RunAsAdministrator
-Set-StrictMode -Version Latest
-
-Write-Host "=== ad01 post-promotion verification ===" -ForegroundColor Cyan
-
-Write-Host "`n[1] Domain info:" -ForegroundColor Yellow
-Get-ADDomain | Select-Object DNSRoot, NetBIOSName, DomainMode, Forest
-
-Write-Host "`n[2] Forest info:" -ForegroundColor Yellow
-Get-ADForest | Select-Object Name, ForestMode, SchemaMaster, DomainNamingMaster
-
-Write-Host "`n[3] DC info:" -ForegroundColor Yellow
-Get-ADDomainController | Select-Object Name, IPv4Address, IsGlobalCatalog, OperationMasterRoles
-
-Write-Host "`n[4] DNS zones:" -ForegroundColor Yellow
-Get-DnsServerZone | Select-Object ZoneName, ZoneType, IsDsIntegrated
-
-Write-Host "`n[5] DCDiag summary:" -ForegroundColor Yellow
-dcdiag /test:dns /test:replications /test:services /q
-
-Write-Host "`n[6] DNS resolution test:" -ForegroundColor Yellow
-Resolve-DnsName 'ad.lab' -Server '127.0.0.1' -ErrorAction SilentlyContinue
-
-Write-Host "`n[7] FSMO roles:" -ForegroundColor Yellow
-netdom query fsmo
-
-Write-Host "`n=== Verification complete ===" -ForegroundColor Cyan
-Write-Host "If all tests pass, run phase3-ad02.ps1 on ad02." -ForegroundColor Green
-```
-
-### 6.3 phase3-ad02.ps1 — Replica DC promotion
-
-Run on ad02. **Prerequisite:** ad01 must be fully promoted and verified first. Reboots once for the rename (script exits and must be rerun manually), then prompts interactively for domain credentials before promoting.
-
-```powershell
-# phase3-ad02.ps1
-# Run on ad02 (win22) — Windows Server Core
-# Promotes ad02 as replica DC for ad.lab
-# IP: 10.0.7.11/24  GW: 10.0.7.254  DNS: 10.0.7.10 (ad01)
-# PREREQUISITE: ad01 must be fully promoted and verified first
-
-#Requires -RunAsAdministrator
-Set-StrictMode -Version Latest
-$ErrorActionPreference = 'Stop'
-
-# ── Step 1 — Rename computer ──────────────────────────────────
-Write-Host "[1/5] Renaming computer to ad02..." -ForegroundColor Cyan
-$currentName = $env:COMPUTERNAME
-if ($currentName -ne 'AD02') {
-    Rename-Computer -NewName 'AD02' -Force
-    Write-Host "     Renamed from $currentName to AD02." -ForegroundColor Yellow
-    Write-Host "     Rebooting to apply name..." -ForegroundColor Yellow
-    Restart-Computer -Force
-    # Script will stop here — rerun after reboot
-    exit
-} else {
-    Write-Host "     Already named AD02, skipping." -ForegroundColor Green
-}
-
-# ── Step 2 — Set static IP ────────────────────────────────────
-Write-Host "[2/5] Configuring static IP 10.0.7.11/24..." -ForegroundColor Cyan
-$ifIndex = (Get-NetAdapter | Where-Object { $_.Status -eq 'Up' }).InterfaceIndex
-
-Remove-NetIPAddress -InterfaceIndex $ifIndex -Confirm:$false -ErrorAction SilentlyContinue
-Remove-NetRoute -InterfaceIndex $ifIndex -Confirm:$false -ErrorAction SilentlyContinue
-
-New-NetIPAddress `
-    -InterfaceIndex  $ifIndex `
-    -IPAddress       '10.0.7.11' `
-    -PrefixLength    24 `
-    -DefaultGateway  '10.0.7.254'
-
-# DNS must point to ad01 first, then itself as secondary
-Set-DnsClientServerAddress `
-    -InterfaceIndex  $ifIndex `
-    -ServerAddresses '10.0.7.10','10.0.7.11'
-
-Write-Host "     IP set." -ForegroundColor Green
-Get-NetIPAddress -InterfaceIndex $ifIndex -AddressFamily IPv4 |
-    Select-Object IPAddress, PrefixLength
-
-# ── Step 3 — Verify connectivity to ad01 ─────────────────────
-Write-Host "[3/5] Verifying connectivity to ad01..." -ForegroundColor Cyan
-
-Start-Sleep -Seconds 10
-$ping = Test-Connection -ComputerName '10.0.7.10' -Count 2 -Quiet -ErrorAction SilentlyContinue
-if (-not $ping) {
-    Write-Host "ERROR: Cannot reach ad01 at 10.0.7.10." -ForegroundColor Red
-    Write-Host "       Ensure ad01 is running and promoted before continuing." -ForegroundColor Red
-    exit 1
-}
-
-if (-not (Resolve-DnsName 'ad.lab' -Server '10.0.7.10' -ErrorAction SilentlyContinue)) {
-    Write-Host "ERROR: DNS resolution for ad.lab failed via ad01." -ForegroundColor Red
-    Write-Host "       Check DNS on ad01 is running correctly." -ForegroundColor Red
-    exit 1
-}
-
-Write-Host "     ad01 reachable and DNS working." -ForegroundColor Green
-
-# ── Step 4 — Install AD DS ────────────────────────────────────
-Write-Host "[4/5] Installing AD DS feature..." -ForegroundColor Cyan
-Install-WindowsFeature `
-    -Name AD-Domain-Services `
-    -IncludeManagementTools
-
-Write-Host "     Feature installed." -ForegroundColor Green
-
-# ── Step 5 — Promote as replica DC ───────────────────────────
-Write-Host "[5/5] Promoting ad02 as replica DC for ad.lab..." -ForegroundColor Cyan
-Write-Host "      Enter ADLAB\Administrator credentials when prompted." -ForegroundColor Yellow
-
-$safeModePassword = ConvertTo-SecureString `
-    'Server2012!' -AsPlainText -Force
-
-$domainCred = Get-Credential -Message "Enter ADLAB\Administrator credentials" `
-    -UserName 'ADLAB\Administrator'
-
-Install-ADDSDomainController `
-    -DomainName                    'ad.lab' `
-    -InstallDns `
-    -Credential                    $domainCred `
-    -SafeModeAdministratorPassword $safeModePassword `
-    -NoRebootOnCompletion:$false `
-    -Force
-
-Write-Host "Promotion triggered. VM will reboot..." -ForegroundColor Green
-```
-
-### 6.4 phase3-ad02-verify.ps1 — Replication checks
-
-```powershell
-# phase3-ad02-verify.ps1
-# Run on ad02 AFTER reboot to verify replication with ad01
-
-#Requires -RunAsAdministrator
-Set-StrictMode -Version Latest
-
-Write-Host "=== ad02 post-promotion verification ===" -ForegroundColor Cyan
-
-Write-Host "`n[1] DC info:" -ForegroundColor Yellow
-Get-ADDomainController | Select-Object Name, IPv4Address, IsGlobalCatalog
-
-Write-Host "`n[2] Replication summary (run on ad01 or ad02):" -ForegroundColor Yellow
-repadmin /replsummary
-
-Write-Host "`n[3] Replication status:" -ForegroundColor Yellow
-repadmin /showrepl
-
-Write-Host "`n[4] All DCs in domain:" -ForegroundColor Yellow
-Get-ADDomainController -Filter * | Select-Object Name, IPv4Address, Site
-
-Write-Host "`n[5] DCDiag on ad02:" -ForegroundColor Yellow
-dcdiag /test:replications /test:services /q
-
-Write-Host "`n[6] DNS zones replicated:" -ForegroundColor Yellow
-Get-DnsServerZone | Select-Object ZoneName, ZoneType, IsDsIntegrated
-
-Write-Host "`n=== Phase 3 complete ===" -ForegroundColor Green
-Write-Host "Both DCs are healthy. Proceed to Phase 4 (PKI tier)." -ForegroundColor Green
-```
-
----
-
-## 7. Unattended DC Promotion — Is It Possible?
-
-**Yes.** The scripts above are only *semi-attended*: `phase3-ad01.ps1` requires a human to log back in and rerun `phase3-ad01-verify.ps1`, and `phase3-ad02.ps1` both stops for a manual rerun after the rename reboot and blocks on an interactive `Get-Credential` prompt. Neither limitation is inherent to AD DS — both can be removed.
-
-### 7.1 Background: what happened to `dcpromo /unattend`?
-
-Pre-2012 Windows Server supported a `dcpromo.exe` answer file (`[DCInstall]` section in an `unattend.txt`). `dcpromo.exe` itself is removed as of Windows Server 2012+; its unattended-install successor is simply calling `Install-ADDSForest` / `Install-ADDSDomainController` with every parameter supplied and no `Get-Credential`/`Read-Host` calls left in the script. That's the modern "answer file" — there's no separate DC-specific XML schema to author.
-
-### 7.2 What actually blocks unattended execution here
-
-| Blocker | Cause | Fix |
-| ------- | ----- | --- |
-| Reboot after rename | `Rename-Computer` requires a restart before AD DS setup can proceed | Re-launch the script automatically at next startup (Scheduled Task or RunOnce), tracked by a state file |
-| Reboot after promotion | `Install-ADDSForest`/`Install-ADDSDomainController` reboot on completion | Same mechanism — the task checks the state file and runs the verification stage instead of re-promoting |
-| Interactive credential prompt (ad02 only) | `Get-Credential` blocks until a human types a password | Supply a `PSCredential` built from a stored secret instead — see 6.3 |
-
-### 7.3 Credential handling without a prompt
-
-Two options, in increasing order of safety:
-
-- **Plaintext in the script** (`ConvertTo-SecureString -AsPlainText`) — consistent with this repo's existing convention of a plaintext DSRM password (`Server2012!`) throughout Phase 3 and Phase 4. Fine for an isolated, disposable lab; not something to carry into anything internet-facing.
-- **DPAPI-encrypted credential file** (`Export-Clixml` / `Import-Clixml`) — encrypt once, interactively, under the same local account and machine that will later decrypt it. Not portable between machines or accounts, but keeps the password out of the script body and off disk in plaintext.
-
-### 7.4 Reboot persistence pattern
-
-Both provided scripts (`phase3-ad01-unattended.ps1`, `phase3-ad02-unattended.ps1`) use the same pattern:
-
-1. A small integer in `C:\ProvisionState\<host>.stage` tracks progress (0 = not started, 1 = renamed, 2 = promoted, 3 = verified).
-2. A Scheduled Task (`AtStartup`, runs as `SYSTEM`, no logon required) re-invokes the same script file on every boot.
-3. The script reads its stage, does the next piece of work, advances the stage, and either reboots (letting the task pick it back up) or — at stage 3 — unregisters its own task and stops.
-
-This is the same idea the OS-level `autounattend.xml` files in `../win19/` and `../win22/` already use for `FirstLogonCommands` (see `win19/autounattend.xml`) — just extended past the point where the base OS install hands off, so the whole chain from blank disk to promoted, verified DC needs zero console interaction.
-
-### 7.5 phase3-ad01-unattended.ps1 — forest root, no prompts
+Launched once by `ad01-autounattend.xml`'s `FirstLogonCommands`. Hostname and static IP are already baked into the answer file, so this only has to install AD DS/DNS and promote — it survives the promotion reboot via a `SYSTEM` scheduled task keyed off a stage file.
 
 ```powershell
 # phase3-ad01-unattended.ps1
-# Run ONCE on ad01 (win19) — Windows Server Core
-# Fully unattended version of phase3-ad01.ps1 + phase3-ad01-verify.ps1
-# Survives both reboots (rename, promotion) with no console interaction.
-# IP: 10.0.7.10/24  GW: 10.0.7.254  DNS: 127.0.0.1
+# Launched ONCE by ad01-autounattend.xml's FirstLogonCommands on ad01 (win19)
+# — Windows Server Core. Fully unattended: hostname (AD01) and static IP
+# (10.0.7.10/24) are already baked into ad01-autounattend.xml, so this script
+# only has to install AD DS + DNS and promote the forest. It survives the
+# reboot Install-ADDSForest triggers with no console interaction.
 #
 # HOW IT WORKS
 #   A state file (C:\ProvisionState\ad01.stage) tracks progress across
 #   reboots. A scheduled task re-launches this same script as SYSTEM at
-#   every startup until stage 3 (verified) is reached, then the task
+#   every startup until stage 2 (verified) is reached, then the task
 #   deletes itself. Nothing here waits on a human.
 
 #Requires -RunAsAdministrator
@@ -723,33 +501,17 @@ $stage = Get-Stage
 Write-Host "=== ad01 unattended provisioning — resuming at stage $stage ===" -ForegroundColor Cyan
 
 if ($stage -eq 0) {
-    # ── Stage 0 — rename, schedule continuation, reboot ────────
-    Write-Host "[Stage 0] Renaming computer to AD01..." -ForegroundColor Cyan
+    # ── Stage 0 — install AD DS + DNS, promote forest root ──────
+    # Re-arm the continuation task BEFORE promoting, since
+    # Install-ADDSForest reboots the machine on its own.
     Register-ContinueTask
-    if ($env:COMPUTERNAME -ne 'AD01') {
-        Rename-Computer -NewName 'AD01' -Force
-    }
-    Set-Stage 1
-    Write-Host "     Rebooting to apply hostname..." -ForegroundColor Yellow
-    Stop-Transcript | Out-Null
-    Restart-Computer -Force
-    exit
-}
 
-if ($stage -eq 1) {
-    # ── Stage 1 — static IP, features, promote forest root ─────
-    Write-Host "[Stage 1] Configuring static IP 10.0.7.10/24..." -ForegroundColor Cyan
-    $ifIndex = (Get-NetAdapter | Where-Object { $_.Status -eq 'Up' }).InterfaceIndex
-    Remove-NetIPAddress -InterfaceIndex $ifIndex -Confirm:$false -ErrorAction SilentlyContinue
-    Remove-NetRoute -InterfaceIndex $ifIndex -Confirm:$false -ErrorAction SilentlyContinue
-    New-NetIPAddress -InterfaceIndex $ifIndex -IPAddress '10.0.7.10' `
-        -PrefixLength 24 -DefaultGateway '10.0.7.254'
-    Set-DnsClientServerAddress -InterfaceIndex $ifIndex -ServerAddresses '127.0.0.1','10.0.7.10'
-
-    Write-Host "[Stage 1] Installing AD DS and DNS features..." -ForegroundColor Cyan
+    Write-Host "[Stage 0] Installing AD DS and DNS features..." -ForegroundColor Cyan
     Install-WindowsFeature -Name AD-Domain-Services, DNS -IncludeManagementTools
 
-    Write-Host "[Stage 1] Promoting ad01 as forest root for ad.lab..." -ForegroundColor Cyan
+    Write-Host "[Stage 0] Promoting ad01 as forest root for ad.lab..." -ForegroundColor Cyan
+    Write-Host "          This will reboot automatically when complete." -ForegroundColor Yellow
+
     # Lab-only: plaintext DSRM password, same convention as the rest of this repo.
     # For anything beyond an isolated lab, pull this from a vault instead.
     $safeModePassword = ConvertTo-SecureString 'Server2012!' -AsPlainText -Force
@@ -765,49 +527,61 @@ if ($stage -eq 1) {
         -Force `
         -Confirm:$false
 
-    Set-Stage 2
+    Set-Stage 1
     # Install-ADDSForest reboots on its own; the scheduled task picks the
     # script back up automatically at next startup — nothing to do here.
     Stop-Transcript | Out-Null
     exit
 }
 
-if ($stage -eq 2) {
-    # ── Stage 2 — post-promotion verification, then done ───────
-    Write-Host "[Stage 2] Verifying AD DS and DNS..." -ForegroundColor Cyan
+if ($stage -eq 1) {
+    # ── Stage 1 — point DNS at the now-local DNS role, verify, done ─
+    Write-Host "[Stage 1] Repointing DNS client to the local DNS role..." -ForegroundColor Cyan
+    $ifIndex = (Get-NetAdapter | Where-Object { $_.Status -eq 'Up' }).InterfaceIndex
+    Set-DnsClientServerAddress -InterfaceIndex $ifIndex -ServerAddresses '127.0.0.1', '10.0.7.10'
+
+    Write-Host "[Stage 1] Verifying AD DS and DNS..." -ForegroundColor Cyan
     Get-ADDomain | Select-Object DNSRoot, NetBIOSName, DomainMode, Forest | Out-Host
     Get-ADForest | Select-Object Name, ForestMode, SchemaMaster | Out-Host
     Get-ADDomainController | Select-Object Name, IPv4Address, IsGlobalCatalog | Out-Host
     dcdiag /test:dns /test:replications /test:services /q | Out-Host
 
-    Set-Stage 3
+    Set-Stage 2
     Unregister-ContinueTask
     Write-Host "=== ad01 unattended provisioning complete ===" -ForegroundColor Green
-    Write-Host "Proceed to ad02: phase3-ad02-unattended.ps1" -ForegroundColor Green
+    Write-Host "ad02 can now be created (create-ad02-vm.sh) and will promote itself" -ForegroundColor Green
+    Write-Host "automatically once it can reach ad01." -ForegroundColor Green
 }
 
 Stop-Transcript | Out-Null
 ```
 
-### 7.6 phase3-ad02-unattended.ps1 — replica DC, no prompts
+### 6.2 phase3-ad02-unattended.ps1 — replica DC, no prompts
+
+Launched once by `ad02-autounattend.xml`'s `FirstLogonCommands`. Waits for ad01 on a 2-minute repeating scheduled-task timer (not just `AtStartup`), so it needs no manual rerun even if ad01 isn't up yet when ad02 finishes installing.
 
 ```powershell
 # phase3-ad02-unattended.ps1
-# Run ONCE on ad02 (win22) — Windows Server Core
-# Fully unattended version of phase3-ad02.ps1 + phase3-ad02-verify.ps1
-# PREREQUISITE: ad01 must already show stage 3 (verified) before this runs.
-# IP: 10.0.7.11/24  GW: 10.0.7.254  DNS: 10.0.7.10 (ad01)
+# Launched ONCE by ad02-autounattend.xml's FirstLogonCommands on ad02 (win22)
+# — Windows Server Core. Fully unattended: hostname (AD02) and static IP
+# (10.0.7.11/24) are already baked into ad02-autounattend.xml, so this script
+# only has to wait for ad01, install AD DS, and promote as a replica.
+#
+# HOW IT WORKS
+#   A state file (C:\ProvisionState\ad02.stage) tracks progress. A scheduled
+#   task re-launches this same script as SYSTEM both at every startup AND on
+#   a 2-minute repeating timer, so it keeps retrying entirely on its own if
+#   ad01 isn't reachable yet — no manual reboot or rerun required, and no
+#   ordering dependency to babysit between create-ad01-vm.sh and
+#   create-ad02-vm.sh. Once promoted, the task deletes itself.
 #
 # CREDENTIAL HANDLING
-#   phase3-ad02.ps1 blocks on Get-Credential. To run unattended, provide
-#   the ADLAB\Administrator password one of two ways:
-#     A) Lab-only, matches this repo's existing convention of plaintext
-#        DSRM passwords: hardcode via ConvertTo-SecureString -AsPlainText.
-#     B) Slightly better: encrypt it once with Export-Clixml under the
-#        SAME account/machine context that will later import it, then
-#        read it back with Import-Clixml (DPAPI-protected at rest, but
-#        only decryptable by that same local account on that same host).
-#   This script uses (A) by default and shows (B) commented out below.
+#   Install-ADDSDomainController normally blocks on Get-Credential. To stay
+#   unattended, Get-DomainCredential below hardcodes the ADLAB\Administrator
+#   password — lab-only, matching this repo's existing convention of a
+#   plaintext DSRM password. For anything beyond an isolated lab, swap this
+#   for an Import-Clixml credential exported once via Export-Clixml under
+#   the same account/host (see Section 7.3).
 
 #Requires -RunAsAdministrator
 Set-StrictMode -Version Latest
@@ -829,12 +603,20 @@ function Get-Stage {
 function Set-Stage([int]$n) { Set-Content -Path $stateFile -Value $n }
 
 function Register-ContinueTask {
-    $action    = New-ScheduledTaskAction -Execute 'powershell.exe' `
+    # Two triggers: AtStartup (survives reboots) AND a 2-minute repeating
+    # timer (survives the case where ad01 simply isn't up yet and no reboot
+    # is going to happen on its own) — this is what makes ad02 wait for ad01
+    # without any human re-running anything.
+    $action        = New-ScheduledTaskAction -Execute 'powershell.exe' `
         -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$scriptPath`""
-    $trigger   = New-ScheduledTaskTrigger -AtStartup
+    $startupTrigger = New-ScheduledTaskTrigger -AtStartup
+    $retryTrigger   = New-ScheduledTaskTrigger -Once -At (Get-Date) `
+        -RepetitionInterval (New-TimeSpan -Minutes 2) `
+        -RepetitionDuration ([TimeSpan]::MaxValue)
     $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
-    $settings  = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
-    Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger `
+    $settings  = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
+        -StartWhenAvailable -MultipleInstances IgnoreNew
+    Register-ScheduledTask -TaskName $taskName -Action $action -Trigger @($startupTrigger, $retryTrigger) `
         -Principal $principal -Settings $settings -Force | Out-Null
 }
 
@@ -843,8 +625,8 @@ function Unregister-ContinueTask {
 }
 
 function Get-DomainCredential {
-    # (A) Lab-only plaintext — remove this block and uncomment (B) for anything
-    # more sensitive than an isolated lab.
+    # (A) Lab-only plaintext — remove this block and use (B) below for
+    # anything more sensitive than an isolated lab.
     $securePwd = ConvertTo-SecureString 'Server2012!' -AsPlainText -Force
     return New-Object System.Management.Automation.PSCredential('ADLAB\Administrator', $securePwd)
 
@@ -861,47 +643,24 @@ $stage = Get-Stage
 Write-Host "=== ad02 unattended provisioning — resuming at stage $stage ===" -ForegroundColor Cyan
 
 if ($stage -eq 0) {
-    # ── Stage 0 — rename, schedule continuation, reboot ────────
-    Write-Host "[Stage 0] Renaming computer to AD02..." -ForegroundColor Cyan
+    # ── Stage 0 — wait for ad01, install AD DS, promote replica ─
     Register-ContinueTask
-    if ($env:COMPUTERNAME -ne 'AD02') {
-        Rename-Computer -NewName 'AD02' -Force
-    }
-    Set-Stage 1
-    Write-Host "     Rebooting to apply hostname..." -ForegroundColor Yellow
-    Stop-Transcript | Out-Null
-    Restart-Computer -Force
-    exit
-}
 
-if ($stage -eq 1) {
-    # ── Stage 1 — static IP, connectivity check, promote replica ─
-    Write-Host "[Stage 1] Configuring static IP 10.0.7.11/24..." -ForegroundColor Cyan
-    $ifIndex = (Get-NetAdapter | Where-Object { $_.Status -eq 'Up' }).InterfaceIndex
-    Remove-NetIPAddress -InterfaceIndex $ifIndex -Confirm:$false -ErrorAction SilentlyContinue
-    Remove-NetRoute -InterfaceIndex $ifIndex -Confirm:$false -ErrorAction SilentlyContinue
-    New-NetIPAddress -InterfaceIndex $ifIndex -IPAddress '10.0.7.11' `
-        -PrefixLength 24 -DefaultGateway '10.0.7.254'
-    Set-DnsClientServerAddress -InterfaceIndex $ifIndex -ServerAddresses '10.0.7.10','10.0.7.11'
+    Write-Host "[Stage 0] Checking connectivity to ad01 (10.0.7.10)..." -ForegroundColor Cyan
+    $ping = Test-Connection -ComputerName '10.0.7.10' -Count 2 -Quiet -ErrorAction SilentlyContinue
+    $dns  = Resolve-DnsName 'ad.lab' -Server '10.0.7.10' -ErrorAction SilentlyContinue
 
-    Write-Host "[Stage 1] Verifying connectivity to ad01..." -ForegroundColor Cyan
-    Start-Sleep -Seconds 10
-    $ping = Test-Connection -ComputerName '10.0.7.10' -Count 4 -Quiet -ErrorAction SilentlyContinue
-    if (-not $ping) {
-        Write-Host "ERROR: Cannot reach ad01 at 10.0.7.10. Will retry on next startup." -ForegroundColor Red
+    if (-not $ping -or -not $dns) {
+        Write-Host "     ad01 not ready yet — will retry automatically in 2 minutes." -ForegroundColor Yellow
         Stop-Transcript | Out-Null
-        exit 1
+        exit
     }
-    if (-not (Resolve-DnsName 'ad.lab' -Server '10.0.7.10' -ErrorAction SilentlyContinue)) {
-        Write-Host "ERROR: DNS resolution for ad.lab failed via ad01. Will retry on next startup." -ForegroundColor Red
-        Stop-Transcript | Out-Null
-        exit 1
-    }
+    Write-Host "     ad01 reachable and DNS working." -ForegroundColor Green
 
-    Write-Host "[Stage 1] Installing AD DS feature..." -ForegroundColor Cyan
+    Write-Host "[Stage 0] Installing AD DS feature..." -ForegroundColor Cyan
     Install-WindowsFeature -Name AD-Domain-Services -IncludeManagementTools
 
-    Write-Host "[Stage 1] Promoting ad02 as replica DC for ad.lab..." -ForegroundColor Cyan
+    Write-Host "[Stage 0] Promoting ad02 as replica DC for ad.lab..." -ForegroundColor Cyan
     $safeModePassword = ConvertTo-SecureString 'Server2012!' -AsPlainText -Force
     $domainCred       = Get-DomainCredential
 
@@ -914,20 +673,20 @@ if ($stage -eq 1) {
         -Force `
         -Confirm:$false
 
-    Set-Stage 2
+    Set-Stage 1
     Stop-Transcript | Out-Null
     exit
 }
 
-if ($stage -eq 2) {
-    # ── Stage 2 — post-promotion verification, then done ───────
-    Write-Host "[Stage 2] Verifying replication..." -ForegroundColor Cyan
+if ($stage -eq 1) {
+    # ── Stage 1 — verify replication, then done ─────────────────
+    Write-Host "[Stage 1] Verifying replication..." -ForegroundColor Cyan
     Get-ADDomainController | Select-Object Name, IPv4Address, IsGlobalCatalog | Out-Host
     repadmin /replsummary | Out-Host
     Get-ADDomainController -Filter * | Select-Object Name, IPv4Address, Site | Out-Host
     dcdiag /test:replications /test:services /q | Out-Host
 
-    Set-Stage 3
+    Set-Stage 2
     Unregister-ContinueTask
     Write-Host "=== ad02 unattended provisioning complete — Phase 3 done ===" -ForegroundColor Green
 }
@@ -935,26 +694,63 @@ if ($stage -eq 2) {
 Stop-Transcript | Out-Null
 ```
 
-### 7.7 Chaining with the OS-level autounattend.xml
+---
 
-To go from a **blank VM to a promoted, verified DC with zero console interaction**, chain this with the OS install layer already used in `../win19/autounattend.xml` and `../win22/autounattend.xml`:
+## 7. Unattended DC Promotion — How It Works
 
-1. `autounattend.xml` installs the OS, sets hostname/IP, and runs `FirstLogonCommands` (see the pattern that installs OpenSSH in `win19/autounattend.xml`).
-2. Add one more `FirstLogonCommand` that copies (or downloads) `phase3-ad0X-unattended.ps1` to disk and launches it once — that single launch is enough, since the script registers its own startup task for every subsequent reboot.
-3. The chain then runs itself to completion: OS install → first boot → rename → reboot → promote → reboot → verify → task self-deletes.
+The two scripts above are fully unattended — no logon, no `Get-Credential` prompt, no manual reboot/rerun. This section documents the mechanics so the pattern is easy to extend to future phases.
 
-That FirstLogonCommand looks like this, added to the existing `<FirstLogonCommands>` block:
+### 7.1 Background: what happened to `dcpromo /unattend`?
+
+Pre-2012 Windows Server supported a `dcpromo.exe` answer file (`[DCInstall]` section in an `unattend.txt`). `dcpromo.exe` itself is removed as of Windows Server 2012+; its unattended-install successor is simply calling `Install-ADDSForest` / `Install-ADDSDomainController` with every parameter supplied and no `Get-Credential`/`Read-Host` calls left in the script. That's the modern "answer file" — there's no separate DC-specific XML schema to author.
+
+### 7.2 What used to block unattended execution, and how it's solved here
+
+| Blocker | Cause | Fix used in this folder |
+| ------- | ----- | --- |
+| Rename + reboot | `Rename-Computer` requires a restart before AD DS setup can proceed | Eliminated — `ComputerName` is baked into `ad0X-autounattend.xml`'s `specialize` pass, so the guest is already named `AD01`/`AD02` at first boot |
+| Static IP configuration | Doing it via `New-NetIPAddress` needs a login session | Eliminated — the TCP/IP and DNS-Client components in `ad0X-autounattend.xml`'s `specialize` pass set it during OS install |
+| Reboot after promotion | `Install-ADDSForest`/`Install-ADDSDomainController` reboot on completion | A `SYSTEM` scheduled task (`AtStartup`) re-launches the same `phase3-ad0X-unattended.ps1` at every boot, tracked by a `C:\ProvisionState\ad0X.stage` file, until the verification stage is reached |
+| ad02 needs ad01 up first | No inherent ordering guarantee between the two VM-creation scripts | `phase3-ad02-unattended.ps1`'s scheduled task also carries a 2-minute repeating trigger, so it retries connectivity to ad01 on its own without needing a reboot or a human to rerun anything |
+| Interactive credential prompt (ad02 only) | `Get-Credential` blocks until a human types a password | `Get-DomainCredential` in `phase3-ad02-unattended.ps1` supplies a `PSCredential` built from a stored secret instead — see 7.3 |
+
+### 7.3 Credential handling without a prompt
+
+Two options, in increasing order of safety:
+
+- **Plaintext in the script** (`ConvertTo-SecureString -AsPlainText`) — what both scripts use by default, consistent with this repo's existing convention of a plaintext DSRM password (`Server2012!`) throughout Phase 3 and Phase 4. Fine for an isolated, disposable lab; not something to carry into anything internet-facing.
+- **DPAPI-encrypted credential file** (`Export-Clixml` / `Import-Clixml`) — encrypt once, interactively, under the same local account and machine that will later decrypt it. Not portable between machines or accounts, but keeps the password out of the script body and off disk in plaintext. Commented-out in `Get-DomainCredential` in `phase3-ad02-unattended.ps1` — uncomment and remove the plaintext block above it to switch.
+
+### 7.4 Reboot persistence pattern
+
+Both `phase3-ad01-unattended.ps1` and `phase3-ad02-unattended.ps1` use the same pattern:
+
+1. A small integer in `C:\ProvisionState\<host>.stage` tracks progress (0 = not started, 1 = promoted [ad01] / promotion attempted [ad02], 2 = verified).
+2. A scheduled task (`SYSTEM`, no logon required) re-invokes the same script file — on ad01 at every startup; on ad02 at every startup *and* every 2 minutes, since it also has to wait on an external dependency (ad01 being reachable) rather than just a local reboot.
+3. The script reads its stage, does the next piece of work, advances the stage, and either exits (letting the next trigger pick it back up after a reboot Windows itself will do) or — once verified — unregisters its own task and stops.
+
+### 7.5 How the OS-level autounattend.xml kicks it all off
+
+`ad01-autounattend.xml` and `ad02-autounattend.xml` chain straight into this from `FirstLogonCommands`:
 
 ```xml
 <SynchronousCommand wcm:action="add">
   <Order>4</Order>
+  <CommandLine>cmd.exe /c if not exist C:\Provision mkdir C:\Provision &amp; copy /Y D:\Provision\phase3-ad01-unattended.ps1 C:\Provision\phase3-ad01-unattended.ps1</CommandLine>
+  <Description>Stage AD DS promotion script from install media to C:\Provision</Description>
+  <RequiresUserInput>false</RequiresUserInput>
+</SynchronousCommand>
+<SynchronousCommand wcm:action="add">
+  <Order>5</Order>
   <CommandLine>powershell.exe -NonInteractive -ExecutionPolicy Bypass -File "C:\Provision\phase3-ad01-unattended.ps1"</CommandLine>
-  <Description>Bootstrap unattended DC promotion</Description>
+  <Description>Bootstrap unattended forest-root promotion (ad01)</Description>
   <RequiresUserInput>false</RequiresUserInput>
 </SynchronousCommand>
 ```
 
-(Place `phase3-ad01-unattended.ps1` at `C:\Provision\` beforehand — e.g. on the same driver ISO/share used for the `NetKVM` drivers — since `FirstLogonCommands` run before any network share you'd normally copy it from is guaranteed reachable.)
+(`create-ad0X-vm.sh` stages `phase3-ad0X-unattended.ps1` onto the rebuilt ISO's `Provision\` folder — the same media used for the `NetKVM` drivers — since `FirstLogonCommands` run before any network share you'd normally copy it from is guaranteed reachable. The `D:` drive letter matches the `D:\NetKVM` driver path already used in the `windowsPE` pass, since the CD-ROM stays attached to the guest as `D:` through first boot.)
+
+The full chain, blank disk to promoted/verified DC, is: OS install → first boot (autologon) → OpenSSH bootstrap → copy promotion script to `C:\Provision` → launch it → install AD DS/DNS → promote → reboot (ad01) or wait-then-promote-then-reboot (ad02) → verify → scheduled task deletes itself.
 
 ---
 
@@ -987,14 +783,29 @@ That FirstLogonCommand looks like this, added to the existing `<FirstLogonComman
 | `netdom query fsmo`                                   | ad01          | FSMO role holders                 |
 | `Get-ScheduledTask Phase3-AD0*-Continue`               | ad01 or ad02  | Check unattended-flow task status |
 | `Get-Content C:\ProvisionState\ad0*.stage`             | ad01 or ad02  | Check unattended-flow progress    |
+| `Get-Content C:\ProvisionState\ad0*-unattended.log -Wait` | ad01 or ad02 | Tail the unattended-flow transcript |
 
 ### Important file locations
 
+**On the libvirt host (this folder):**
+
+| Path                          | Contents                                                |
+| ------------------------------ | -------------------------------------------------------- |
+| `ad01-autounattend.xml`        | Custom answer file for ad01 (hostname, IP, promotion bootstrap baked in) |
+| `ad02-autounattend.xml`        | Custom answer file for ad02 (hostname, IP, promotion bootstrap baked in) |
+| `phase3-ad01-unattended.ps1`   | Forest-root promotion script, staged onto ad01's install media |
+| `phase3-ad02-unattended.ps1`   | Replica-DC promotion script, staged onto ad02's install media |
+| `create-ad01-vm.sh`            | Builds ad01's unattended ISO and launches the VM         |
+| `create-ad02-vm.sh`            | Builds ad02's unattended ISO and launches the VM         |
+
+**On each guest:**
+
 | Path                                 | VM             | Contents                                  |
 | ------------------------------------- | -------------- | ------------------------------------------ |
+| `C:\Provision\phase3-ad0X-unattended.ps1` | ad01, ad02 | Copy of the promotion script staged from the install media |
 | `C:\ProvisionState\ad0*.stage`        | ad01, ad02     | Unattended-flow progress marker           |
 | `C:\ProvisionState\ad0*-unattended.log` | ad01, ad02   | Transcript of the unattended run          |
-| `C:\ProvisionState\ad02-cred.xml`     | ad02 (optional)| DPAPI-encrypted domain credential (7.3-B) |
+| `C:\ProvisionState\ad02-cred.xml`     | ad02 (optional)| DPAPI-encrypted domain credential (7.3, option B) |
 
 ---
 
