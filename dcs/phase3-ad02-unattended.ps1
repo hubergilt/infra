@@ -116,9 +116,17 @@ if ($stage -eq 0) {
 }
 
 if ($stage -eq 1) {
-    # ── Stage 1 — verify replication, then done ─────────────────
+    # ── Stage 1 — forwarders, verify replication, then done ─────
+    Write-Host "[Stage 1] Pinning DNS Server forwarders to Cloudflare (1.1.1.1, 1.0.0.1)..." -ForegroundColor Cyan
+    # ad02's pre-promotion resolver list is 10.0.7.10/10.0.7.11 (internal DCs),
+    # so unlike ad01 there's nothing external for -InstallDns to have inherited
+    # here — this must be set explicitly or ad02 falls back to root hints and
+    # diverges from ad01's upstream behavior.
+    Set-DnsServerForwarder -IPAddress '1.1.1.1', '1.0.0.1' -UseRootHint $false
+
     Write-Host "[Stage 1] Verifying replication..." -ForegroundColor Cyan
     Get-ADDomainController | Select-Object Name, IPv4Address, IsGlobalCatalog | Out-Host
+    Get-DnsServerForwarder | Out-Host
     repadmin /replsummary | Out-Host
     Get-ADDomainController -Filter * | Select-Object Name, IPv4Address, Site | Out-Host
     dcdiag /test:replications /test:services /q | Out-Host

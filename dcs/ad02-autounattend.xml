@@ -187,12 +187,24 @@
         </SynchronousCommand>
         <SynchronousCommand wcm:action="add">
           <Order>4</Order>
+          <CommandLine>powershell.exe -NonInteractive -ExecutionPolicy Bypass -Command "Enable-NetFirewallRule -Name FPS-ICMP4-ERQ-In,FPS-ICMP6-ERQ-In"</CommandLine>
+          <Description>Enable ICMP echo reply (allow ping)</Description>
+          <RequiresUserInput>false</RequiresUserInput>
+        </SynchronousCommand>
+        <SynchronousCommand wcm:action="add">
+          <Order>5</Order>
+          <CommandLine>cmd.exe /c bcdedit /ems {current} on &amp; bcdedit /emssettings EMSPORT:1 EMSBAUDRATE:115200 &amp; bcdedit /bootems {current} on</CommandLine>
+          <Description>Enable EMS/SAC on COM1 (115200) for virsh console access; takes effect on next reboot</Description>
+          <RequiresUserInput>false</RequiresUserInput>
+        </SynchronousCommand>
+        <SynchronousCommand wcm:action="add">
+          <Order>6</Order>
           <CommandLine>cmd.exe /c if not exist C:\Provision mkdir C:\Provision &amp; copy /Y D:\Provision\phase3-ad02-unattended.ps1 C:\Provision\phase3-ad02-unattended.ps1</CommandLine>
           <Description>Stage AD DS promotion script from install media to C:\Provision</Description>
           <RequiresUserInput>false</RequiresUserInput>
         </SynchronousCommand>
         <SynchronousCommand wcm:action="add">
-          <Order>5</Order>
+          <Order>7</Order>
           <CommandLine>powershell.exe -NonInteractive -ExecutionPolicy Bypass -File "C:\Provision\phase3-ad02-unattended.ps1"</CommandLine>
           <Description>Bootstrap unattended replica-DC promotion (ad02)</Description>
           <RequiresUserInput>false</RequiresUserInput>

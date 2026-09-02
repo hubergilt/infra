@@ -88,10 +88,17 @@ if ($stage -eq 1) {
     $ifIndex = (Get-NetAdapter | Where-Object { $_.Status -eq 'Up' }).InterfaceIndex
     Set-DnsClientServerAddress -InterfaceIndex $ifIndex -ServerAddresses '127.0.0.1', '10.0.7.10'
 
+    Write-Host "[Stage 1] Pinning DNS Server forwarders to Cloudflare (1.1.1.1, 1.0.0.1)..." -ForegroundColor Cyan
+    # Explicit rather than relying on whatever the pre-promotion NIC resolver
+    # happened to be — makes the upstream DNS a deliberate, auditable setting
+    # instead of an implicit side effect of Install-ADDSForest -InstallDns.
+    Set-DnsServerForwarder -IPAddress '1.1.1.1', '1.0.0.1' -UseRootHint $false
+
     Write-Host "[Stage 1] Verifying AD DS and DNS..." -ForegroundColor Cyan
     Get-ADDomain | Select-Object DNSRoot, NetBIOSName, DomainMode, Forest | Out-Host
     Get-ADForest | Select-Object Name, ForestMode, SchemaMaster | Out-Host
     Get-ADDomainController | Select-Object Name, IPv4Address, IsGlobalCatalog | Out-Host
+    Get-DnsServerForwarder | Out-Host
     dcdiag /test:dns /test:replications /test:services /q | Out-Host
 
     Set-Stage 2

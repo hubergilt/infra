@@ -46,6 +46,8 @@ apt install p7zip-full genisoimage qemu-utils virtinst ovmf
 
 1. `ComputerName` is `AD01` / `AD02` directly — no `Rename-Computer` + reboot needed afterward.
 2. The static IP is `10.0.7.10/24` / `10.0.7.11/24` on `lab-identity`, gateway `10.0.7.254` (ad02's DNS search order also points at ad01 first, itself second).
+   - ad01's pre-promotion resolver is Cloudflare-only (`1.1.1.1`, `1.0.0.1`) rather than a DC address, since none exists yet at that point.
+   - Upstream DNS for anything outside `ad.lab` is Cloudflare (`1.1.1.1` + `1.0.0.1`) on **both** DCs. This is set explicitly via `Set-DnsServerForwarder -IPAddress '1.1.1.1','1.0.0.1' -UseRootHint $false` in Stage 1 of each `phase3-ad0X-unattended.ps1`, rather than left to whatever `Install-ADDSForest`/`Install-ADDSDomainController -InstallDns` happens to inherit from the pre-promotion NIC resolver — ad02 in particular has no external addresses on its NIC to inherit from (its resolver list is the two DCs), so without this explicit step it would silently fall back to root hints and diverge from ad01. Verify with `Get-DnsServerForwarder` on either DC.
 3. `FirstLogonCommands` gains two extra steps beyond the usual OpenSSH bootstrap:
    - copy `D:\Provision\phase3-ad0X-unattended.ps1` (staged onto the ISO by the `create-ad0X-vm.sh` script) to `C:\Provision\`
    - launch it once with `powershell.exe -File C:\Provision\phase3-ad0X-unattended.ps1`
@@ -540,10 +542,17 @@ if ($stage -eq 1) {
     $ifIndex = (Get-NetAdapter | Where-Object { $_.Status -eq 'Up' }).InterfaceIndex
     Set-DnsClientServerAddress -InterfaceIndex $ifIndex -ServerAddresses '127.0.0.1', '10.0.7.10'
 
+    Write-Host "[Stage 1] Pinning DNS Server forwarders to Cloudflare (1.1.1.1, 1.0.0.1)..." -ForegroundColor Cyan
+    # Explicit rather than relying on whatever the pre-promotion NIC resolver
+    # happened to be — makes the upstream DNS a deliberate, auditable setting
+    # instead of an implicit side effect of Install-ADDSForest -InstallDns.
+    Set-DnsServerForwarder -IPAddress '1.1.1.1', '1.0.0.1' -UseRootHint $false
+
     Write-Host "[Stage 1] Verifying AD DS and DNS..." -ForegroundColor Cyan
     Get-ADDomain | Select-Object DNSRoot, NetBIOSName, DomainMode, Forest | Out-Host
     Get-ADForest | Select-Object Name, ForestMode, SchemaMaster | Out-Host
     Get-ADDomainController | Select-Object Name, IPv4Address, IsGlobalCatalog | Out-Host
+    Get-DnsServerForwarder | Out-Host
     dcdiag /test:dns /test:replications /test:services /q | Out-Host
 
     Set-Stage 2
@@ -679,9 +688,17 @@ if ($stage -eq 0) {
 }
 
 if ($stage -eq 1) {
-    # ── Stage 1 — verify replication, then done ─────────────────
+    # ── Stage 1 — forwarders, verify replication, then done ─────
+    Write-Host "[Stage 1] Pinning DNS Server forwarders to Cloudflare (1.1.1.1, 1.0.0.1)..." -ForegroundColor Cyan
+    # ad02's pre-promotion resolver list is 10.0.7.10/10.0.7.11 (internal DCs),
+    # so unlike ad01 there's nothing external for -InstallDns to have inherited
+    # here — this must be set explicitly or ad02 falls back to root hints and
+    # diverges from ad01's upstream behavior.
+    Set-DnsServerForwarder -IPAddress '1.1.1.1', '1.0.0.1' -UseRootHint $false
+
     Write-Host "[Stage 1] Verifying replication..." -ForegroundColor Cyan
     Get-ADDomainController | Select-Object Name, IPv4Address, IsGlobalCatalog | Out-Host
+    Get-DnsServerForwarder | Out-Host
     repadmin /replsummary | Out-Host
     Get-ADDomainController -Filter * | Select-Object Name, IPv4Address, Site | Out-Host
     dcdiag /test:replications /test:services /q | Out-Host
@@ -762,6 +779,7 @@ The full chain, blank disk to promoted/verified DC, is: OS install → first boo
 | Domain created                 | PASS   | `Get-ADDomain`                              |
 | ad01 is Global Catalog + FSMO  | PASS   | `Get-ADDomainController`, `netdom query fsmo` |
 | DNS zone `ad.lab` AD-integrated| PASS   | `Get-DnsServerZone`                         |
+| Forwarders = Cloudflare only (ad01 + ad02) | PASS | `Get-DnsServerForwarder`        |
 | ad02 replica promoted          | PASS   | `Get-ADDomainController -Filter *`          |
 | Replication healthy            | PASS   | `repadmin /replsummary`                     |
 | DCDiag clean                   | PASS   | `dcdiag /test:dns /test:replications /test:services /q` |
@@ -780,6 +798,7 @@ The full chain, blank disk to promoted/verified DC, is: OS install → first boo
 | `repadmin /replsummary`                               | ad01 or ad02  | Replication health                |
 | `repadmin /showrepl`                                  | ad01 or ad02  | Detailed replication status       |
 | `dcdiag /test:dns /test:replications /test:services /q` | ad01 or ad02 | Full DC health check              |
+| `Get-DnsServerForwarder`                              | ad01 or ad02  | Confirm upstream DNS = Cloudflare (1.1.1.1, 1.0.0.1) |
 | `netdom query fsmo`                                   | ad01          | FSMO role holders                 |
 | `Get-ScheduledTask Phase3-AD0*-Continue`               | ad01 or ad02  | Check unattended-flow task status |
 | `Get-Content C:\ProvisionState\ad0*.stage`             | ad01 or ad02  | Check unattended-flow progress    |

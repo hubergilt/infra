@@ -124,14 +124,18 @@
     </component>
     <!-- Temporary resolvers for OS install/first boot only. The provisioning
          script switches this to 127.0.0.1 / 10.0.7.10 once AD DS + DNS are
-         installed and ad01 is authoritative for ad.lab. -->
+         installed and ad01 is authoritative for ad.lab. Cloudflare only
+         (1.1.1.1 / 1.0.0.1) — phase3-ad01-unattended.ps1 also pins these
+         explicitly as the DNS Server role's forwarders via
+         Set-DnsServerForwarder, so this list is no longer load-bearing for
+         that purpose, just for OS install/first-boot connectivity. -->
     <component language="neutral" name="Microsoft-Windows-DNS-Client" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" versionScope="nonSxS">
       <Interfaces>
         <Interface wcm:action="add">
           <Identifier>Ethernet</Identifier>
           <DNSServerSearchOrder>
             <IpAddress wcm:action="add" wcm:keyValue="1">1.1.1.1</IpAddress>
-            <IpAddress wcm:action="add" wcm:keyValue="2">8.8.8.8</IpAddress>
+            <IpAddress wcm:action="add" wcm:keyValue="2">1.0.0.1</IpAddress>
           </DNSServerSearchOrder>
           <EnableAdapterDomainNameRegistration>false</EnableAdapterDomainNameRegistration>
         </Interface>
@@ -187,12 +191,24 @@
         </SynchronousCommand>
         <SynchronousCommand wcm:action="add">
           <Order>4</Order>
+          <CommandLine>powershell.exe -NonInteractive -ExecutionPolicy Bypass -Command "Enable-NetFirewallRule -Name FPS-ICMP4-ERQ-In,FPS-ICMP6-ERQ-In"</CommandLine>
+          <Description>Enable ICMP echo reply (allow ping)</Description>
+          <RequiresUserInput>false</RequiresUserInput>
+        </SynchronousCommand>
+        <SynchronousCommand wcm:action="add">
+          <Order>5</Order>
+          <CommandLine>cmd.exe /c bcdedit /ems {current} on &amp; bcdedit /emssettings EMSPORT:1 EMSBAUDRATE:115200 &amp; bcdedit /bootems {current} on</CommandLine>
+          <Description>Enable EMS/SAC on COM1 (115200) for virsh console access; takes effect on next reboot</Description>
+          <RequiresUserInput>false</RequiresUserInput>
+        </SynchronousCommand>
+        <SynchronousCommand wcm:action="add">
+          <Order>6</Order>
           <CommandLine>cmd.exe /c if not exist C:\Provision mkdir C:\Provision &amp; copy /Y D:\Provision\phase3-ad01-unattended.ps1 C:\Provision\phase3-ad01-unattended.ps1</CommandLine>
           <Description>Stage AD DS promotion script from install media to C:\Provision</Description>
           <RequiresUserInput>false</RequiresUserInput>
         </SynchronousCommand>
         <SynchronousCommand wcm:action="add">
-          <Order>5</Order>
+          <Order>7</Order>
           <CommandLine>powershell.exe -NonInteractive -ExecutionPolicy Bypass -File "C:\Provision\phase3-ad01-unattended.ps1"</CommandLine>
           <Description>Bootstrap unattended forest-root promotion (ad01)</Description>
           <RequiresUserInput>false</RequiresUserInput>
