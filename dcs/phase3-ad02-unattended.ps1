@@ -1,4 +1,4 @@
-# phase3-ad02-unattended.ps1
+﻿# phase3-ad02-unattended.ps1
 # Launched ONCE by ad02-autounattend.xml's FirstLogonCommands on ad02 (win22)
 # — Windows Server Core. Fully unattended: hostname (AD02) and static IP
 # (10.0.7.11/24) are already baked into ad02-autounattend.xml, so this script
