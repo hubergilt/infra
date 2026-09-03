@@ -1,189 +1,128 @@
-# ad.lab Data Tier — Phase 7 Reference Guide
-## SQL Server Implementation (sql01)
+# sql01 — Unattended Windows Server + SQL Server 2025 VM
 
-Built from `general-nw.puml` (consolidated, segmented topology) — the Data
-tier is its own subnet, 10.0.6.0/24, separate from the App/Gateway tier that
-earlier phases used.
-
----
-
-## 1. Overview
-
-Phase 7 deploys the single-instance SQL Server host defined in the
-Data group of the diagram.
-
-| VM | Hostname | IP | Role | OS |
-|---|---|---|---|---|
-| sql01 | sql01.ad.lab | 10.0.6.70 | SQL Server 2025 — single instance | Win Server 2025 Core |
-
-Per the diagram's legend, this design intentionally has **no sql01 replica**
-("removed per requirements") — this is a single point of failure by design,
-not an oversight. Plan backups accordingly (`backup01`, 10.0.3.22, MGMT-only).
-
----
-
-## 2. Prerequisites
-
-- `lab-data` network defined and started: `make create-network-lab-data` (from `nets/`)
-- Phase 3 complete — ad01/ad02 promoted and replicating (now at 10.0.7.10/.11
-  per the corrected Identity tier addressing, not the 10.0.1.x used in
-  earlier phases)
-- Phase 4 complete — ca02 issuing certs (only needed here if you later add
-  Force Encryption / TLS to the SQL endpoint)
-- Windows Server 2025 ISO and `SQLServer2025-x64-ENU-EntDev.iso` present on
-  the libvirt host (see paths in `create-sql01-unattend.sh` / `attach-sql-iso.sh`)
-- `virt-install`, `genisoimage`, `p7zip-full`, `qemu-utils`, `ovmf` on the host
-
-### ⚠️ Firewall ACL gap not in the original diagram
-
-The nwdiag's ACL matrix defines `App->Data:1433/445` and `App->AD:389/88/445`,
-but **no Data→Identity rule**. sql01 needs to reach ad01/ad02 for DNS and
-Kerberos to join the domain at all. Add this on fw01 before running Phase 7:
+Same pattern as `create-ad01-vm.sh`: one command builds a custom install
+ISO, boots a KVM/libvirt VM from it, and the guest finishes the entire
+job itself — Windows Server install, hostname/static IP, and a fully
+unattended SQL Server 2025 (Enterprise Developer/Eval) install — with
+zero console interaction from start to finish.
 
 ```
-Pass  Data net (10.0.6.0/24) -> Identity net (10.0.7.10, 10.0.7.11)  TCP/UDP 53,88,389,445
+dcs/
+├── README.md                        (this file)
+├── create-sql01-vm.sh                # builds the ISO and launches the VM
+├── sql01-autounattend.xml            # Windows Setup answer file (host: SQL01)
+├── phase3-sql01-unattended.ps1       # guest-side: finds SQL media, installs, verifies
+└── ConfigurationFile.ini             # SQL Server setup.exe answer file
 ```
 
-This is the same kind of gap the diagram already calls out for backup
-(no offsite copy) and ora01 (no standby) — treat it as one more documented
-correction rather than a silent assumption.
+## How it works
 
----
+1. **`create-sql01-vm.sh`** extracts the Windows Server install ISO,
+   drops in `sql01-autounattend.xml` as `autounattend.xml`, injects the
+   NetKVM VirtIO network driver, and stages `phase3-sql01-unattended.ps1`
+   + `ConfigurationFile.ini` into `sources\$OEM$\$1\Provision\` — Windows
+   Setup copies `$OEM$` content straight to `C:\Provision` on the guest,
+   so no CD-ROM lookup is needed for these two files.
+2. It rebuilds a bootable ISO with `genisoimage` and launches the VM with
+   `virt-install`, attaching **two** CD-ROMs: the custom Windows install
+   ISO (boots Setup) and the **untouched** `SQLServer2025-x64-ENU-EntDev.iso`
+   (read later by the guest — not merged into the Windows ISO, since
+   WinPE never needs it and it's ~6GB).
+3. Windows installs unattended from the answer file: partitions the disk,
+   sets the `SQL01` hostname and a static IP, enables RDP, and — at first
+   logon — runs `phase3-sql01-unattended.ps1` exactly once
+   (`FirstLogonCommands`).
+4. That script finds the SQL Server CD-ROM (by looking for
+   `x64\setup.exe`, which distinguishes it from the Windows install media),
+   generates a random `sa` password, and runs:
+   ```
+   setup.exe /ConfigurationFile=C:\Provision\ConfigurationFile.ini /SAPWD=... /IACCEPTSQLSERVERLICENSETERMS
+   ```
+5. It checks the exit code, reboots if setup requests one (exit `3010`),
+   and verifies the instance with `sqlcmd -Q "SELECT @@VERSION;"`.
 
-## 3. VM network config
+## Prerequisites
 
-| VM | NIC | Gateway | DNS |
-|---|---|---|---|
-| sql01 | lab-data 10.0.6.70/24 | 10.0.6.1 (fw01 Data leg) | 10.0.7.10, 10.0.7.11 (ad01, ad02) |
+On the KVM/libvirt host (same as `create-ad01-vm.sh`):
+```bash
+apt install p7zip-full genisoimage qemu-utils virtinst ovmf
+```
+- Windows Server install ISO (2019 by default, matching the ad01 script;
+  swap in 2022/2025 media in `create-sql01-vm.sh` if you'd rather run
+  SQL Server on newer Windows).
+- SQL Server 2025 install ISO. This repo assumes:
+  `/home/huber/Downloads/SQLServer2025-x64-ENU-EntDev.iso`
+- NetKVM VirtIO drivers already present at `../win19/NetKVM/` (same
+  driver folder `create-ad01-vm.sh` uses).
+- A libvirt network named `lab-identity` (or update `NETWORK` in the
+  script if SQL01 belongs on a different segment in your environment).
 
-Disks:
+## Before running
 
-| Disk | Bus | Size | Purpose |
-|---|---|---|---|
-| sql01.qcow2 | sata | 60G | OS (C:) |
-| sql01-data.qcow2 | virtio | 100G | SQL data/log/tempdb/backup (F:), formatted by phase7-sql01.ps1 |
+Edit `sql01-autounattend.xml` and replace:
+- `CHANGE_ME_EDITION_NAME` — exact edition string from your media
+  (`Get-WindowsImage -ImagePath D:\sources\install.wim` on a mounted copy).
+- `CHANGE_ME_ORG`, `CHANGE_ME_PRODUCT_KEY`, `CHANGE_ME_ADMIN_PASSWORD`.
+- The static IP block (`10.0.7.20/24`, gateway `10.0.7.1`) and DNS
+  (`10.0.7.10`, i.e. ad01) if SQL01 doesn't belong on that network/DNS
+  server in your lab.
 
----
+Edit `ConfigurationFile.ini` if you need different:
+- `FEATURES` (defaults to `SQLENGINE,CONN,BC`).
+- `SQLSYSADMINACCOUNTS` — replace `BUILTIN\Administrators` with a
+  specific admin account/group before using this anywhere but a lab.
+- Data/log/tempdb paths (defaults assume a `D:` data drive exists —
+  add a second virtio disk in `create-sql01-vm.sh` and format it as `D:`
+  in `phase3-sql01-unattended.ps1` if you want dedicated data disks
+  rather than everything on `C:`).
 
-## 4. MAC address inventory
-
-Fill this in after first boot — data tier has no DHCP, so unlike the LAN
-tier there's no reservation table to keep in sync, but it's still useful
-for asset tracking:
+## Running it
 
 ```bash
-virsh domiflist sql01
+cd dcs/
+./create-sql01-vm.sh
 ```
 
-| VM | MAC (lab-data) |
-|---|---|
-| sql01 | *(fill in after `virsh domiflist sql01`)* |
-
----
-
-## 5. Deployment steps
-
+Watch it go:
 ```bash
-cd sql01/
-
-# 1. Build the Windows Server 2025 VM (unattended, static IP baked in)
-./create-sql01-unattend.sh
-
-# 2. Watch it install, wait for the login prompt
 virt-viewer sql01
-
-# 3. Hot-attach the SQL Server media
-./attach-sql-iso.sh sql01
-
-# 4. Push scripts over ssh and run the unattended SQL install
-#    (prompts once for ADLAB\Administrator during domain join;
-#     re-run after each reboot — every step is idempotent)
-./deploy-sql01.sh
+virsh domstate sql01
 ```
 
-Manual/console alternative to step 4, run directly on sql01 (matches the
-pattern used by ad01/app01 in earlier phases):
+Once Windows Setup finishes and the guest is provisioning SQL Server,
+track progress from inside the guest:
+```powershell
+Get-Content C:\ProvisionState\sql01-unattended.log -Wait
+Get-Content C:\ProvisionState\sql01.stage   # 0=installing SQL, 1=installed, 2=verified
+```
+
+## Getting the sa password
+
+The `sa` password is generated randomly at provisioning time — it is
+never hard-coded in this repo. Retrieve it from inside the guest:
+```powershell
+Get-Content C:\ProvisionState\sql01-sa-password.txt
+```
+That file is ACL'd to `Administrators`/`SYSTEM` only. Rotate it after
+first login if this instance isn't purely a disposable lab VM.
+
+## Verifying
 
 ```powershell
-# Copy ConfigurationFile.ini, phase7-sql01.ps1, phase7-sql01-verify.ps1
-# to C:\Deploy first (scp, shared folder, or RDP clipboard), then:
-cd C:\Deploy
-.\phase7-sql01.ps1
-.\phase7-sql01-verify.ps1
+Get-Service MSSQLSERVER, SQLSERVERAGENT
+sqlcmd -S SQL01 -U sa -P '<password from sql01-sa-password.txt>' -Q "SELECT @@VERSION;"
 ```
 
----
+## Security notes
 
-## 6. SQL Server configuration
-
-```
-Instance:      MSSQLSERVER (default)
-Features:      Database Engine only
-Auth mode:     Windows/Kerberos only (matches app01/web01 — no SQL logins)
-Sysadmins:     ADLAB\Administrator, BUILTIN\Administrators
-Service acct:  NT SERVICE\MSSQLSERVER (virtual account — no domain
-               credential to rotate; upgrade to a gMSA if you later need
-               cross-server Kerberos delegation, e.g. linked servers)
-TCP port:      1433, statically pinned (installer only turns TCP on;
-               phase7-sql01.ps1 fixes the port via SMO WMI afterwards)
-Data paths:    F:\SQLData, F:\SQLLogs, F:\SQLTempDB, F:\SQLBackup
-               (dedicated virtio disk, kept off the OS disk on purpose)
-```
-
-### Fix a stuck/duplicate TCP binding
-
-If step 6 of `phase7-sql01.ps1` warns that it couldn't set the port (e.g. the
-`SqlServer` PowerShell module isn't present), set it by hand:
-
-```powershell
-Import-Module SqlServer
-$wmi = New-Object Microsoft.SqlServer.Management.Smo.Wmi.ManagedComputer
-$tcp = $wmi.ServerInstances['MSSQLSERVER'].ServerProtocols['Tcp']
-$tcp.IsEnabled = $true
-$tcp.IPAddresses['IPAll'].IPAddressProperties['TcpDynamicPorts'].Value = ''
-$tcp.IPAddresses['IPAll'].IPAddressProperties['TcpPort'].Value = '1433'
-$tcp.Alter()
-Restart-Service MSSQLSERVER
-```
-
-### Test from app01 (App/Gateway tier)
-
-```powershell
-Test-NetConnection sql01.ad.lab -Port 1433
-sqlcmd -S sql01.ad.lab -E -Q "SELECT @@VERSION"
-```
-
-This only works once the Data→Identity ACL gap above is closed and fw01 has
-an `App -> sql01:1433` rule, per the diagram's `App->Data:1433/445` entry.
-
----
-
-## 7. Verification checklist
-
-| Test | Command |
-|---|---|
-| Domain joined | `Get-WmiObject Win32_ComputerSystem \| Select Domain` |
-| DNS -> ad01/ad02 | `Get-DnsClientServerAddress` |
-| MSSQLSERVER running | `Get-Service MSSQLSERVER` |
-| TCP 1433 listening | `Test-NetConnection localhost -Port 1433` |
-| Firewall rule present | `Get-NetFirewallRule -DisplayName 'SQL Server TCP 1433'` |
-| Data files on F:\ | `sqlcmd -S localhost -E -Q "SELECT physical_name FROM sys.master_files"` |
-| Reachable from app01 | `Test-NetConnection sql01.ad.lab -Port 1433` (from app01, after ACL fix) |
-
-Run all of these in one shot with `phase7-sql01-verify.ps1`.
-
----
-
-## 8. Known gaps carried over from the diagram
-
-- **No replica for sql01** — by design, per the legend ("removed per
-  requirements"). Rely on `backup01` (10.0.3.22) for recovery; note the
-  diagram also flags that backup has **no offsite/DR copy** yet.
-- **Data→Identity ACL not in the original matrix** — added above; needed
-  for domain join and ongoing Kerberos auth, not just first boot.
-- **fw01/vpn01/waf01/lb01 have no HA** — doesn't block Phase 7, but means a
-  single fw01 failure takes the Data tier's only route to AD with it.
-
----
-
-*ad.lab Phase 7 Reference Guide — August 2026*
+- No SQL Server or Windows Administrator password is committed to this
+  repo — `ConfigurationFile.ini` never contains `SAPWD`, and every
+  password placeholder in `sql01-autounattend.xml` is a `CHANGE_ME_*`
+  value you fill in locally (keep a populated copy out of git, or use
+  Setup's base64-obfuscated `PlainText=false` form, which is obscurity
+  rather than encryption).
+- `BUILTIN\Administrators` is granted SQL sysadmin by default — fine for
+  a lab, not for production; narrow `SQLSYSADMINACCOUNTS` before reuse.
+- TCP 1433 is opened in the guest firewall automatically; tighten the
+  scope (source IP restriction, or remove entirely and use SSH/RDP
+  tunneling) if SQL01 is reachable from anything beyond the lab network.
