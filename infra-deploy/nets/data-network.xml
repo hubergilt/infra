@@ -1,0 +1,12 @@
+<!--
+  Data network — 10.0.6.0/24
+  Isolated bridge: fw01 (OPNsense) is the gateway/router for this segment
+  and is expected to already have a leg on this same bridge from your
+  opnsense26 build. No libvirt NAT and no libvirt DHCP — hosts here
+  (sql01, sql02, fs01, fs02, ora01) all use static IPs per general-nw.puml.
+-->
+<network>
+  <name>data</name>
+  <bridge name="virbr-data" stp="on" delay="0"/>
+  <forward mode="none"/>
+</network>

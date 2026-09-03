@@ -122,9 +122,48 @@ if ($stage -eq 1) {
     # so unlike ad01 there's nothing external for -InstallDns to have inherited
     # here — this must be set explicitly or ad02 falls back to root hints and
     # diverges from ad01's upstream behavior.
+
+    # The DNS Server role's WMI/CIM provider can lag a few seconds behind
+    # the service reporting "Running" right after a post-promotion reboot,
+    # so Set-DnsServerForwarder can hit a transient WIN32 1722 (RPC server
+    # unavailable). Poll until it actually answers before configuring it.
+    $dnsReady = $false
+    for ($i = 0; $i -lt 12; $i++) {
+        try {
+            Get-DnsServerForwarder -ErrorAction Stop | Out-Null
+            $dnsReady = $true
+            break
+        } catch {
+            Write-Host "[Stage 1] DNS Server role not ready yet, retrying in 5s... ($($i + 1)/12)" -ForegroundColor Yellow
+            Start-Sleep -Seconds 5
+        }
+    }
+    if (-not $dnsReady) {
+        throw "DNS Server role did not become queryable after 60 seconds."
+    }
+
     Set-DnsServerForwarder -IPAddress '1.1.1.1', '1.0.0.1' -UseRootHint $false
 
     Write-Host "[Stage 1] Verifying replication..." -ForegroundColor Cyan
+
+    # Same ADWS-lag issue as the DNS role above — Get-AD* cmdlets need
+    # Active Directory Web Services up, which can trail DNS by a wide margin
+    # right after promotion. Probe before trusting any Get-AD* call below.
+    $adwsReady = $false
+    for ($i = 0; $i -lt 12; $i++) {
+        try {
+            Get-ADRootDSE -ErrorAction Stop | Out-Null
+            $adwsReady = $true
+            break
+        } catch {
+            Write-Host "[Stage 1] ADWS not ready yet, retrying in 5s... ($($i + 1)/12)" -ForegroundColor Yellow
+            Start-Sleep -Seconds 5
+        }
+    }
+    if (-not $adwsReady) {
+        throw "Active Directory Web Services did not become available after 60 seconds."
+    }
+
     Get-ADDomainController | Select-Object Name, IPv4Address, IsGlobalCatalog | Out-Host
     Get-DnsServerForwarder | Out-Host
     repadmin /replsummary | Out-Host

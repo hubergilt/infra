@@ -23,6 +23,44 @@ Phase 3 stands up the identity tier for the ad.lab domain: a forest-root DC (ad0
 
 **This folder is fully self-contained and fully unattended.** Running `create-ad01-vm.sh` takes a blank VM all the way to a verified, promoted forest root with zero console interaction, and `create-ad02-vm.sh` does the same for the replica once ad01 is up. Nobody needs to log into either guest at any point.
 
+### 1.1 Quickstart — How to Run This
+
+```
+On the libvirt host, from inside dcs/:
+
+  1. One-time check (Section 4):
+     - Base ISOs present at the paths hardcoded in each create-ad0X-vm.sh
+     - ../win19/NetKVM/ and ../win22/NetKVM/ contain the VirtIO drivers
+     - lab-identity libvirt network already defined
+     - apt install p7zip-full genisoimage qemu-utils virtinst ovmf
+
+  2. ./create-ad01-vm.sh
+     Builds the ISO and launches ad01. The command itself now blocks for
+     up to 60 minutes (--wait 60) while virt-install babysits Windows
+     Setup's own install-time reboots — this is what keeps the VM from
+     ending up shut off mid-install needing a manual `virsh start` (see
+     2.4). Once it returns, ad01 is past OS install and running the AD DS
+     promotion unattended in the background.
+     Watch it with:  virt-viewer ad01
+     Or tail it with: ssh into ad01 and
+                       Get-Content C:\ProvisionState\ad01-unattended.log -Wait
+
+     Wait for:  Get-Content C:\ProvisionState\ad01.stage  ->  2
+
+  3. ./create-ad02-vm.sh
+     Can be run immediately after Step 2 — ad02 just retries every 2 minutes
+     until ad01 answers, no need to wait for Step 2 to finish first.
+     Same --wait 60 behavior applies to the OS-install portion.
+
+     Wait for:  Get-Content C:\ProvisionState\ad02.stage  ->  2
+
+  4. Verify (Section 8/9), e.g. from either DC:
+       dcdiag /test:dns /test:replications /test:services /q
+       repadmin /replsummary
+```
+
+That's the whole flow. Everything else in this document is *why* it works this way — the retry loops, the power-event policy, and the encoding gotcha in Section 7 are all already baked into the scripts, not extra steps you need to perform.
+
 ---
 
 ## 2. VM Creation
@@ -56,282 +94,19 @@ That single launch is enough — the script re-arms itself via a scheduled task 
 
 ### 2.2 create-ad01-vm.sh
 
-```bash
-#!/bin/bash
-# create-ad01-vm.sh
-# Creates the ad01 VM (Windows Server 2019 Core) — fully unattended OS
-# install AND fully unattended AD DS forest-root promotion.
-#
-# Unlike the earlier version of this script, the answer file is a custom
-# copy that lives in this folder (ad01-autounattend.xml) instead of a
-# reference to ../win19/autounattend.xml — hostname (AD01) and static IP
-# (10.0.7.10/24) are baked in directly, and its FirstLogonCommands stage
-# phase3-ad01-unattended.ps1 onto the guest and launch it once. From there
-# the guest promotes itself to the ad.lab forest root with zero console
-# interaction: OS install -> first boot -> AD DS/DNS install -> promote ->
-# reboot -> verify. See dcs/README.md section 7 for how the chain works.
-#
-# Requirements: p7zip-full, genisoimage, qemu-utils, virtinst, ovmf
-#   apt install p7zip-full genisoimage qemu-utils virtinst ovmf
-#
-# Run from inside the dcs/ folder:
-#   ./create-ad01-vm.sh
-
-set -e
-
-VM_NAME="${1:-ad01}"
-ORIG_ISO="/home/huber/Downloads/en-us_windows_server_2019_x64_dvd_f9475476.iso"
-ANSWER_FILE="$(pwd)/ad01-autounattend.xml"
-PROVISION_SCRIPT="$(pwd)/phase3-ad01-unattended.ps1"
-NEW_ISO="$(pwd)/${VM_NAME}-unattended.iso"
-WORK_DIR="/tmp/${VM_NAME}-iso-work"
-DISK_PATH="/vms/${VM_NAME}.qcow2"
-NETKVM_SRC="$(pwd)/../win19/NetKVM"
-NETKVM_DST="$WORK_DIR/NetKVM"
-DISK_SIZE=50
-RAM=2048
-VCPUS=2
-NETWORK="lab-identity"
-
-# Dependency check
-for cmd in 7z genisoimage qemu-img virt-install; do
-  command -v "$cmd" &>/dev/null || {
-    echo "ERROR: '$cmd' not found."
-    echo "  Install: apt install p7zip-full genisoimage qemu-utils virtinst ovmf"
-    exit 1
-  }
-done
-
-[ ! -f "$ORIG_ISO" ]         && echo "ERROR: ISO not found: $ORIG_ISO"                                   && exit 1
-[ ! -f "$ANSWER_FILE" ]      && echo "ERROR: Answer file not found: $ANSWER_FILE (expected in dcs/)"      && exit 1
-[ ! -f "$PROVISION_SCRIPT" ] && echo "ERROR: Provisioning script not found: $PROVISION_SCRIPT"            && exit 1
-
-# Check OVMF firmware is available for UEFI
-if [ ! -f /usr/share/OVMF/OVMF_CODE.fd ] && [ ! -f /usr/share/ovmf/OVMF.fd ]; then
-  echo "ERROR: OVMF not found. Install with: apt install ovmf"
-  exit 1
-fi
-
-mkdir -p /vms
-
-# 1. Extract ISO
-echo "[1/5] Extracting ISO..."
-rm -rf "$WORK_DIR" && mkdir -p "$WORK_DIR"
-7z x "$ORIG_ISO" -o"$WORK_DIR" -y > /dev/null
-
-# 2. Inject answer file, NetKVM VirtIO driver, and the DC promotion script
-echo "[2/5] Injecting ad01-autounattend.xml, NetKVM driver, and Provision\\phase3-ad01-unattended.ps1..."
-cp "$ANSWER_FILE" "$WORK_DIR/autounattend.xml"
-
-if [ ! -d "$NETKVM_SRC" ]; then
-  echo "ERROR: NetKVM driver folder not found at $NETKVM_SRC"
-  echo "  Download virtio-win drivers from https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/stable-virtio/"
-  echo "  and place the NetKVM/w2k19/amd64/ contents in ../win19/NetKVM/"
-  exit 1
-fi
-cp -r "$NETKVM_SRC" "$NETKVM_DST"
-
-mkdir -p "$WORK_DIR/Provision"
-cp "$PROVISION_SCRIPT" "$WORK_DIR/Provision/phase3-ad01-unattended.ps1"
-
-# 3. Rebuild bootable ISO
-echo "[3/5] Rebuilding ISO at $NEW_ISO ..."
-genisoimage \
-  -iso-level 4 \
-  -l -R -J \
-  -no-emul-boot \
-  -b boot/etfsboot.com \
-  -boot-load-size 8 \
-  -boot-load-seg 0x07C0 \
-  -eltorito-alt-boot \
-  -e efi/microsoft/boot/efisys_noprompt.bin \
-  -no-emul-boot \
-  -allow-limited-size \
-  -relaxed-filenames \
-  -o "$NEW_ISO" \
-  "$WORK_DIR"
-
-# 4. Clean up old VM, create disk, launch with UEFI
-echo "[4/5] Creating disk and launching VM (UEFI)..."
-virsh destroy  "$VM_NAME" 2>/dev/null || true
-virsh undefine "$VM_NAME" --nvram 2>/dev/null || true
-rm -f "$DISK_PATH"
-
-qemu-img create -f qcow2 "$DISK_PATH" "${DISK_SIZE}G"
-
-virt-install \
-  --name           "$VM_NAME" \
-  --ram            "$RAM" \
-  --vcpus          "$VCPUS" \
-  --os-variant     win2k19 \
-  --machine        q35 \
-  --boot           uefi \
-  --disk           path="$DISK_PATH",format=qcow2,bus=sata \
-  --cdrom          "$NEW_ISO" \
-  --network        network="$NETWORK",model=virtio \
-  --graphics       spice \
-  --video          qxl \
-  --noautoconsole
-
-# 5. Clean WORK_DIR
-echo "[5/5] Clean WORK_DIR"
-rm -rf "$WORK_DIR"
-
-echo ""
-echo "Done. VM '$VM_NAME' is installing unattended (UEFI/GPT)."
-echo "  Watch progress : virt-viewer $VM_NAME"
-echo "  Check state    : virsh domstate $VM_NAME"
-echo "  List VMs       : virsh list --all"
-echo ""
-echo "NEXT: nothing to do by hand. Once Windows Setup finishes, ad01 renames"
-echo "  itself to AD01, sets 10.0.7.10/24, installs AD DS + DNS, and promotes"
-echo "  itself as the ad.lab forest root automatically, rebooting as needed."
-echo "  Track progress from inside the guest:"
-echo "    Get-Content C:\\ProvisionState\\ad01-unattended.log -Wait"
-echo "    Get-Content C:\\ProvisionState\\ad01.stage   (0=installing AD DS, 1=promoted, 2=verified)"
-echo "  Once ad01.stage reaches 2, run ./create-ad02-vm.sh."
-```
+See `create-ad01-vm.sh` in this folder for the full script.
 
 ### 2.3 create-ad02-vm.sh
 
-```bash
-#!/bin/bash
-# create-ad02-vm.sh
-# Creates the ad02 VM (Windows Server 2022 Core) — fully unattended OS
-# install AND fully unattended replica-DC promotion.
-#
-# Unlike the earlier version of this script, the answer file is a custom
-# copy that lives in this folder (ad02-autounattend.xml) instead of a
-# reference to ../win22/autounattend.xml — hostname (AD02) and static IP
-# (10.0.7.11/24) are baked in directly, and its FirstLogonCommands stage
-# phase3-ad02-unattended.ps1 onto the guest and launch it once. From there
-# the guest waits for ad01 on its own (retrying every 2 minutes, no manual
-# rerun needed) and promotes itself as a replica DC once ad01 answers.
-# See dcs/README.md section 7 for how the chain works.
-#
-# PREREQUISITE: ad01 should already be created and promoted (see
-# create-ad01-vm.sh) before ad02 is promoted — VM creation itself has no
-# such dependency, and ad02 will simply keep retrying until ad01 answers.
-#
-# Requirements: p7zip-full, genisoimage, qemu-utils, virtinst, ovmf
-#   apt install p7zip-full genisoimage qemu-utils virtinst ovmf
-#
-# Run from inside the dcs/ folder:
-#   ./create-ad02-vm.sh
+See `create-ad02-vm.sh` in this folder for the full script.
 
-set -e
+### 2.4 Why `--wait 60` is on the `virt-install` call
 
-VM_NAME="${1:-ad02}"
-ORIG_ISO="/home/huber/Downloads/en-us_windows_server_2022_updated_aug_2026_x64_dvd_f5ac19b0.iso"
-ANSWER_FILE="$(pwd)/ad02-autounattend.xml"
-PROVISION_SCRIPT="$(pwd)/phase3-ad02-unattended.ps1"
-NEW_ISO="$(pwd)/${VM_NAME}-unattended.iso"
-WORK_DIR="/tmp/${VM_NAME}-iso-work"
-DISK_PATH="/vms/${VM_NAME}.qcow2"
-NETKVM_SRC="$(pwd)/../win22/NetKVM"
-NETKVM_DST="$WORK_DIR/NetKVM"
-DISK_SIZE=50
-RAM=2048
-VCPUS=2
-NETWORK="lab-identity"
+For a multistep install (`--cdrom`, as both these scripts use), `virt-install` documents this exact behavior: once the install phase completes, the VM ends up **shut off — regardless of whether Windows itself requested a reboot along the way** — unless the `virt-install` process itself stays alive to manage those reboots. With plain `--noautoconsole`, the command kicks off the install and exits immediately, so nothing is left watching, and Windows Setup's normal file-copy → specialize → oobeSystem reboot chain leaves the VM sitting in `shut off` state needing a manual `virsh start` to continue. (This is a documented `virt-install`/`--noautoconsole` behavior, not a libvirt `on_reboot`/`on_poweroff` policy issue — an earlier revision of this doc misattributed it to the latter and tried to fix it with `--events on_poweroff=restart`, which the `qemu` driver actually rejects outright as an unsupported `on_reboot`/`on_poweroff` combination.)
 
-# Dependency check
-for cmd in 7z genisoimage qemu-img virt-install; do
-  command -v "$cmd" &>/dev/null || {
-    echo "ERROR: '$cmd' not found."
-    echo "  Install: apt install p7zip-full genisoimage qemu-utils virtinst ovmf"
-    exit 1
-  }
-done
+The fix is `--wait`, which both scripts now pass as `--wait 60`: it keeps `virt-install` running (compatible with `--noautoconsole`) for up to 60 minutes, during which it manages the install-time reboots itself. Once Windows Setup's own install phase is complete, `virt-install` exits and the domain reverts to plain libvirt defaults (`on_reboot=restart`, `on_poweroff=destroy`) — which already do exactly the right thing for everything that happens afterward: the AD DS promotion reboot auto-resumes on its own (default `on_reboot=restart`), and a later deliberate shutdown actually sticks (default `on_poweroff=destroy`). No revert step needed, because nothing was overridden for the steady state to begin with.
 
-[ ! -f "$ORIG_ISO" ]         && echo "ERROR: ISO not found: $ORIG_ISO"                                   && exit 1
-[ ! -f "$ANSWER_FILE" ]      && echo "ERROR: Answer file not found: $ANSWER_FILE (expected in dcs/)"      && exit 1
-[ ! -f "$PROVISION_SCRIPT" ] && echo "ERROR: Provisioning script not found: $PROVISION_SCRIPT"            && exit 1
-
-# Check OVMF firmware is available for UEFI
-if [ ! -f /usr/share/OVMF/OVMF_CODE.fd ] && [ ! -f /usr/share/ovmf/OVMF.fd ]; then
-  echo "ERROR: OVMF not found. Install with: apt install ovmf"
-  exit 1
-fi
-
-mkdir -p /vms
-
-# 1. Extract ISO
-echo "[1/5] Extracting ISO..."
-rm -rf "$WORK_DIR" && mkdir -p "$WORK_DIR"
-7z x "$ORIG_ISO" -o"$WORK_DIR" -y > /dev/null
-
-# 2. Inject answer file, NetKVM VirtIO driver, and the DC promotion script
-echo "[2/5] Injecting ad02-autounattend.xml, NetKVM driver, and Provision\\phase3-ad02-unattended.ps1..."
-cp "$ANSWER_FILE" "$WORK_DIR/autounattend.xml"
-
-if [ ! -d "$NETKVM_SRC" ]; then
-  echo "ERROR: NetKVM driver folder not found at $NETKVM_SRC"
-  echo "  Mount virtio-win.iso and copy the NetKVM/w2k22/amd64/ contents into ../win22/NetKVM/"
-  exit 1
-fi
-cp -r "$NETKVM_SRC" "$NETKVM_DST"
-
-mkdir -p "$WORK_DIR/Provision"
-cp "$PROVISION_SCRIPT" "$WORK_DIR/Provision/phase3-ad02-unattended.ps1"
-
-# 3. Rebuild bootable ISO
-echo "[3/5] Rebuilding ISO at $NEW_ISO ..."
-genisoimage \
-  -iso-level 4 \
-  -l -R -J \
-  -no-emul-boot \
-  -b boot/etfsboot.com \
-  -boot-load-size 8 \
-  -boot-load-seg 0x07C0 \
-  -eltorito-alt-boot \
-  -e efi/microsoft/boot/efisys_noprompt.bin \
-  -no-emul-boot \
-  -allow-limited-size \
-  -relaxed-filenames \
-  -o "$NEW_ISO" \
-  "$WORK_DIR"
-
-# 4. Clean up old VM, create disk, launch with UEFI
-echo "[4/5] Creating disk and launching VM (UEFI)..."
-virsh destroy  "$VM_NAME" 2>/dev/null || true
-virsh undefine "$VM_NAME" --nvram 2>/dev/null || true
-rm -f "$DISK_PATH"
-
-qemu-img create -f qcow2 "$DISK_PATH" "${DISK_SIZE}G"
-
-virt-install \
-  --name           "$VM_NAME" \
-  --ram            "$RAM" \
-  --vcpus          "$VCPUS" \
-  --os-variant     win2k22 \
-  --machine        q35 \
-  --boot           uefi \
-  --disk           path="$DISK_PATH",format=qcow2,bus=sata \
-  --cdrom          "$NEW_ISO" \
-  --network        network="$NETWORK",model=virtio \
-  --graphics       spice \
-  --video          qxl \
-  --noautoconsole
-
-# 5. Clean WORK_DIR
-echo "[5/5] Clean WORK_DIR"
-rm -rf "$WORK_DIR"
-
-echo ""
-echo "Done. VM '$VM_NAME' is installing unattended (UEFI/GPT)."
-echo "  Watch progress : virt-viewer $VM_NAME"
-echo "  Check state    : virsh domstate $VM_NAME"
-echo "  List VMs       : virsh list --all"
-echo ""
-echo "NEXT: nothing to do by hand. Once Windows Setup finishes, ad02 renames"
-echo "  itself to AD02, sets 10.0.7.11/24, waits for ad01 to answer (retrying"
-echo "  every 2 minutes on its own), installs AD DS, and promotes itself as a"
-echo "  replica DC for ad.lab automatically, rebooting as needed."
-echo "  Track progress from inside the guest:"
-echo "    Get-Content C:\\ProvisionState\\ad02-unattended.log -Wait"
-echo "    Get-Content C:\\ProvisionState\\ad02.stage   (0=waiting/installing, 1=promoted, 2=verified)"
-```
+60 minutes is generous for a Server Core install; if it's ever genuinely stuck past that, `--wait` simply times out and exits, leaving the VM in whatever state it's in — same fallback as before (`virsh domstate` / `virsh start`).
 
 ---
 
@@ -449,267 +224,15 @@ That's the entire flow — from blank VM to two verified, replicating domain con
 
 ### 6.1 phase3-ad01-unattended.ps1 — forest root, no prompts
 
-Launched once by `ad01-autounattend.xml`'s `FirstLogonCommands`. Hostname and static IP are already baked into the answer file, so this only has to install AD DS/DNS and promote — it survives the promotion reboot via a `SYSTEM` scheduled task keyed off a stage file.
+Launched once by `ad01-autounattend.xml`'s `FirstLogonCommands`. Hostname and static IP are already baked into the answer file, so this only has to install AD DS/DNS and promote — it survives the promotion reboot via a `SYSTEM` scheduled task keyed off a stage file. Stage 1 also polls for the DNS role and ADWS to actually be queryable before touching either, rather than assuming they're up the instant the reboot completes — see Section 7.6.
 
-```powershell
-# phase3-ad01-unattended.ps1
-# Launched ONCE by ad01-autounattend.xml's FirstLogonCommands on ad01 (win19)
-# — Windows Server Core. Fully unattended: hostname (AD01) and static IP
-# (10.0.7.10/24) are already baked into ad01-autounattend.xml, so this script
-# only has to install AD DS + DNS and promote the forest. It survives the
-# reboot Install-ADDSForest triggers with no console interaction.
-#
-# HOW IT WORKS
-#   A state file (C:\ProvisionState\ad01.stage) tracks progress across
-#   reboots. A scheduled task re-launches this same script as SYSTEM at
-#   every startup until stage 2 (verified) is reached, then the task
-#   deletes itself. Nothing here waits on a human.
-
-#Requires -RunAsAdministrator
-Set-StrictMode -Version Latest
-$ErrorActionPreference = 'Stop'
-
-$stateDir   = 'C:\ProvisionState'
-$stateFile  = Join-Path $stateDir 'ad01.stage'
-$taskName   = 'Phase3-AD01-Continue'
-$scriptPath = $MyInvocation.MyCommand.Path
-$logFile    = Join-Path $stateDir 'ad01-unattended.log'
-
-New-Item -ItemType Directory -Path $stateDir -Force | Out-Null
-Start-Transcript -Path $logFile -Append | Out-Null
-
-function Get-Stage {
-    if (Test-Path $stateFile) { return [int](Get-Content $stateFile) }
-    return 0
-}
-function Set-Stage([int]$n) { Set-Content -Path $stateFile -Value $n }
-
-function Register-ContinueTask {
-    # Runs at every startup as SYSTEM, no logon required, no user prompt.
-    $action    = New-ScheduledTaskAction -Execute 'powershell.exe' `
-        -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$scriptPath`""
-    $trigger   = New-ScheduledTaskTrigger -AtStartup
-    $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
-    $settings  = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
-    Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger `
-        -Principal $principal -Settings $settings -Force | Out-Null
-}
-
-function Unregister-ContinueTask {
-    Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
-}
-
-$stage = Get-Stage
-Write-Host "=== ad01 unattended provisioning — resuming at stage $stage ===" -ForegroundColor Cyan
-
-if ($stage -eq 0) {
-    # ── Stage 0 — install AD DS + DNS, promote forest root ──────
-    # Re-arm the continuation task BEFORE promoting, since
-    # Install-ADDSForest reboots the machine on its own.
-    Register-ContinueTask
-
-    Write-Host "[Stage 0] Installing AD DS and DNS features..." -ForegroundColor Cyan
-    Install-WindowsFeature -Name AD-Domain-Services, DNS -IncludeManagementTools
-
-    Write-Host "[Stage 0] Promoting ad01 as forest root for ad.lab..." -ForegroundColor Cyan
-    Write-Host "          This will reboot automatically when complete." -ForegroundColor Yellow
-
-    # Lab-only: plaintext DSRM password, same convention as the rest of this repo.
-    # For anything beyond an isolated lab, pull this from a vault instead.
-    $safeModePassword = ConvertTo-SecureString 'Server2012!' -AsPlainText -Force
-
-    Install-ADDSForest `
-        -DomainName                    'ad.lab' `
-        -DomainNetbiosName             'ADLAB' `
-        -ForestMode                    'WinThreshold' `
-        -DomainMode                    'WinThreshold' `
-        -InstallDns `
-        -SafeModeAdministratorPassword $safeModePassword `
-        -NoRebootOnCompletion:$false `
-        -Force `
-        -Confirm:$false
-
-    Set-Stage 1
-    # Install-ADDSForest reboots on its own; the scheduled task picks the
-    # script back up automatically at next startup — nothing to do here.
-    Stop-Transcript | Out-Null
-    exit
-}
-
-if ($stage -eq 1) {
-    # ── Stage 1 — point DNS at the now-local DNS role, verify, done ─
-    Write-Host "[Stage 1] Repointing DNS client to the local DNS role..." -ForegroundColor Cyan
-    $ifIndex = (Get-NetAdapter | Where-Object { $_.Status -eq 'Up' }).InterfaceIndex
-    Set-DnsClientServerAddress -InterfaceIndex $ifIndex -ServerAddresses '127.0.0.1', '10.0.7.10'
-
-    Write-Host "[Stage 1] Pinning DNS Server forwarders to Cloudflare (1.1.1.1, 1.0.0.1)..." -ForegroundColor Cyan
-    # Explicit rather than relying on whatever the pre-promotion NIC resolver
-    # happened to be — makes the upstream DNS a deliberate, auditable setting
-    # instead of an implicit side effect of Install-ADDSForest -InstallDns.
-    Set-DnsServerForwarder -IPAddress '1.1.1.1', '1.0.0.1' -UseRootHint $false
-
-    Write-Host "[Stage 1] Verifying AD DS and DNS..." -ForegroundColor Cyan
-    Get-ADDomain | Select-Object DNSRoot, NetBIOSName, DomainMode, Forest | Out-Host
-    Get-ADForest | Select-Object Name, ForestMode, SchemaMaster | Out-Host
-    Get-ADDomainController | Select-Object Name, IPv4Address, IsGlobalCatalog | Out-Host
-    Get-DnsServerForwarder | Out-Host
-    dcdiag /test:dns /test:replications /test:services /q | Out-Host
-
-    Set-Stage 2
-    Unregister-ContinueTask
-    Write-Host "=== ad01 unattended provisioning complete ===" -ForegroundColor Green
-    Write-Host "ad02 can now be created (create-ad02-vm.sh) and will promote itself" -ForegroundColor Green
-    Write-Host "automatically once it can reach ad01." -ForegroundColor Green
-}
-
-Stop-Transcript | Out-Null
-```
+See `phase3-ad01-unattended.ps1` in this folder for the full script.
 
 ### 6.2 phase3-ad02-unattended.ps1 — replica DC, no prompts
 
-Launched once by `ad02-autounattend.xml`'s `FirstLogonCommands`. Waits for ad01 on a 2-minute repeating scheduled-task timer (not just `AtStartup`), so it needs no manual rerun even if ad01 isn't up yet when ad02 finishes installing.
+Launched once by `ad02-autounattend.xml`'s `FirstLogonCommands`. Waits for ad01 on a 2-minute repeating scheduled-task timer (not just `AtStartup`), so it needs no manual rerun even if ad01 isn't up yet when ad02 finishes installing. Stage 1 also polls for the DNS role and ADWS before using either — see Section 7.6.
 
-```powershell
-# phase3-ad02-unattended.ps1
-# Launched ONCE by ad02-autounattend.xml's FirstLogonCommands on ad02 (win22)
-# — Windows Server Core. Fully unattended: hostname (AD02) and static IP
-# (10.0.7.11/24) are already baked into ad02-autounattend.xml, so this script
-# only has to wait for ad01, install AD DS, and promote as a replica.
-#
-# HOW IT WORKS
-#   A state file (C:\ProvisionState\ad02.stage) tracks progress. A scheduled
-#   task re-launches this same script as SYSTEM both at every startup AND on
-#   a 2-minute repeating timer, so it keeps retrying entirely on its own if
-#   ad01 isn't reachable yet — no manual reboot or rerun required, and no
-#   ordering dependency to babysit between create-ad01-vm.sh and
-#   create-ad02-vm.sh. Once promoted, the task deletes itself.
-#
-# CREDENTIAL HANDLING
-#   Install-ADDSDomainController normally blocks on Get-Credential. To stay
-#   unattended, Get-DomainCredential below hardcodes the ADLAB\Administrator
-#   password — lab-only, matching this repo's existing convention of a
-#   plaintext DSRM password. For anything beyond an isolated lab, swap this
-#   for an Import-Clixml credential exported once via Export-Clixml under
-#   the same account/host (see Section 7.3).
-
-#Requires -RunAsAdministrator
-Set-StrictMode -Version Latest
-$ErrorActionPreference = 'Stop'
-
-$stateDir   = 'C:\ProvisionState'
-$stateFile  = Join-Path $stateDir 'ad02.stage'
-$taskName   = 'Phase3-AD02-Continue'
-$scriptPath = $MyInvocation.MyCommand.Path
-$logFile    = Join-Path $stateDir 'ad02-unattended.log'
-
-New-Item -ItemType Directory -Path $stateDir -Force | Out-Null
-Start-Transcript -Path $logFile -Append | Out-Null
-
-function Get-Stage {
-    if (Test-Path $stateFile) { return [int](Get-Content $stateFile) }
-    return 0
-}
-function Set-Stage([int]$n) { Set-Content -Path $stateFile -Value $n }
-
-function Register-ContinueTask {
-    # Two triggers: AtStartup (survives reboots) AND a 2-minute repeating
-    # timer (survives the case where ad01 simply isn't up yet and no reboot
-    # is going to happen on its own) — this is what makes ad02 wait for ad01
-    # without any human re-running anything.
-    $action        = New-ScheduledTaskAction -Execute 'powershell.exe' `
-        -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$scriptPath`""
-    $startupTrigger = New-ScheduledTaskTrigger -AtStartup
-    $retryTrigger   = New-ScheduledTaskTrigger -Once -At (Get-Date) `
-        -RepetitionInterval (New-TimeSpan -Minutes 2) `
-        -RepetitionDuration ([TimeSpan]::MaxValue)
-    $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
-    $settings  = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
-        -StartWhenAvailable -MultipleInstances IgnoreNew
-    Register-ScheduledTask -TaskName $taskName -Action $action -Trigger @($startupTrigger, $retryTrigger) `
-        -Principal $principal -Settings $settings -Force | Out-Null
-}
-
-function Unregister-ContinueTask {
-    Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
-}
-
-function Get-DomainCredential {
-    # (A) Lab-only plaintext — remove this block and use (B) below for
-    # anything more sensitive than an isolated lab.
-    $securePwd = ConvertTo-SecureString 'Server2012!' -AsPlainText -Force
-    return New-Object System.Management.Automation.PSCredential('ADLAB\Administrator', $securePwd)
-
-    # (B) Encrypted-at-rest alternative — run once, interactively, BEFORE
-    # kicking off the unattended flow, from the same account/host that will
-    # later read it back:
-    #   Get-Credential ADLAB\Administrator |
-    #     Export-Clixml C:\ProvisionState\ad02-cred.xml
-    # Then here:
-    #   return Import-Clixml C:\ProvisionState\ad02-cred.xml
-}
-
-$stage = Get-Stage
-Write-Host "=== ad02 unattended provisioning — resuming at stage $stage ===" -ForegroundColor Cyan
-
-if ($stage -eq 0) {
-    # ── Stage 0 — wait for ad01, install AD DS, promote replica ─
-    Register-ContinueTask
-
-    Write-Host "[Stage 0] Checking connectivity to ad01 (10.0.7.10)..." -ForegroundColor Cyan
-    $ping = Test-Connection -ComputerName '10.0.7.10' -Count 2 -Quiet -ErrorAction SilentlyContinue
-    $dns  = Resolve-DnsName 'ad.lab' -Server '10.0.7.10' -ErrorAction SilentlyContinue
-
-    if (-not $ping -or -not $dns) {
-        Write-Host "     ad01 not ready yet — will retry automatically in 2 minutes." -ForegroundColor Yellow
-        Stop-Transcript | Out-Null
-        exit
-    }
-    Write-Host "     ad01 reachable and DNS working." -ForegroundColor Green
-
-    Write-Host "[Stage 0] Installing AD DS feature..." -ForegroundColor Cyan
-    Install-WindowsFeature -Name AD-Domain-Services -IncludeManagementTools
-
-    Write-Host "[Stage 0] Promoting ad02 as replica DC for ad.lab..." -ForegroundColor Cyan
-    $safeModePassword = ConvertTo-SecureString 'Server2012!' -AsPlainText -Force
-    $domainCred       = Get-DomainCredential
-
-    Install-ADDSDomainController `
-        -DomainName                    'ad.lab' `
-        -InstallDns `
-        -Credential                    $domainCred `
-        -SafeModeAdministratorPassword $safeModePassword `
-        -NoRebootOnCompletion:$false `
-        -Force `
-        -Confirm:$false
-
-    Set-Stage 1
-    Stop-Transcript | Out-Null
-    exit
-}
-
-if ($stage -eq 1) {
-    # ── Stage 1 — forwarders, verify replication, then done ─────
-    Write-Host "[Stage 1] Pinning DNS Server forwarders to Cloudflare (1.1.1.1, 1.0.0.1)..." -ForegroundColor Cyan
-    # ad02's pre-promotion resolver list is 10.0.7.10/10.0.7.11 (internal DCs),
-    # so unlike ad01 there's nothing external for -InstallDns to have inherited
-    # here — this must be set explicitly or ad02 falls back to root hints and
-    # diverges from ad01's upstream behavior.
-    Set-DnsServerForwarder -IPAddress '1.1.1.1', '1.0.0.1' -UseRootHint $false
-
-    Write-Host "[Stage 1] Verifying replication..." -ForegroundColor Cyan
-    Get-ADDomainController | Select-Object Name, IPv4Address, IsGlobalCatalog | Out-Host
-    Get-DnsServerForwarder | Out-Host
-    repadmin /replsummary | Out-Host
-    Get-ADDomainController -Filter * | Select-Object Name, IPv4Address, Site | Out-Host
-    dcdiag /test:replications /test:services /q | Out-Host
-
-    Set-Stage 2
-    Unregister-ContinueTask
-    Write-Host "=== ad02 unattended provisioning complete — Phase 3 done ===" -ForegroundColor Green
-}
-
-Stop-Transcript | Out-Null
-```
+See `phase3-ad02-unattended.ps1` in this folder for the full script.
 
 ---
 
@@ -730,6 +253,9 @@ Pre-2012 Windows Server supported a `dcpromo.exe` answer file (`[DCInstall]` sec
 | Reboot after promotion | `Install-ADDSForest`/`Install-ADDSDomainController` reboot on completion | A `SYSTEM` scheduled task (`AtStartup`) re-launches the same `phase3-ad0X-unattended.ps1` at every boot, tracked by a `C:\ProvisionState\ad0X.stage` file, until the verification stage is reached |
 | ad02 needs ad01 up first | No inherent ordering guarantee between the two VM-creation scripts | `phase3-ad02-unattended.ps1`'s scheduled task also carries a 2-minute repeating trigger, so it retries connectivity to ad01 on its own without needing a reboot or a human to rerun anything |
 | Interactive credential prompt (ad02 only) | `Get-Credential` blocks until a human types a password | `Get-DomainCredential` in `phase3-ad02-unattended.ps1` supplies a `PSCredential` built from a stored secret instead — see 7.3 |
+| DNS role / ADWS not ready right after reboot | `Set-DnsServerForwarder` and every `Get-AD*` cmdlet depend on WMI/CIM providers (DNS Server role, Active Directory Web Services) that can take longer to initialize than the service itself reporting "Running" | Both scripts poll (`Get-DnsServerForwarder` / `Get-ADRootDSE`, 12 × 5s) before touching either — see 7.6 |
+| VM shuts off mid-install instead of continuing | `virt-install`'s documented behavior for a multistep (`--cdrom`) install with `--noautoconsole`: it exits immediately after kicking off the install, so nothing is left to manage the reboots Windows Setup issues along the way | `create-ad0X-vm.sh` passes `--wait 60` to `virt-install`, keeping it alive to babysit the install-time reboots — see 2.4 |
+| `phase3-ad01-unattended.ps1` fails to parse (`Unexpected token '}'`) | Windows PowerShell 5.1 doesn't reliably auto-detect BOM-less UTF-8; the script's em-dash/box-drawing comment characters get misread under the system codepage, desyncing the parser | Both `phase3-ad0X-unattended.ps1` files are checked in with a UTF-8 BOM — see 7.7 |
 
 ### 7.3 Credential handling without a prompt
 
@@ -768,6 +294,27 @@ Both `phase3-ad01-unattended.ps1` and `phase3-ad02-unattended.ps1` use the same 
 (`create-ad0X-vm.sh` stages `phase3-ad0X-unattended.ps1` onto the rebuilt ISO's `Provision\` folder — the same media used for the `NetKVM` drivers — since `FirstLogonCommands` run before any network share you'd normally copy it from is guaranteed reachable. The `D:` drive letter matches the `D:\NetKVM` driver path already used in the `windowsPE` pass, since the CD-ROM stays attached to the guest as `D:` through first boot.)
 
 The full chain, blank disk to promoted/verified DC, is: OS install → first boot (autologon) → OpenSSH bootstrap → copy promotion script to `C:\Provision` → launch it → install AD DS/DNS → promote → reboot (ad01) or wait-then-promote-then-reboot (ad02) → verify → scheduled task deletes itself.
+
+### 7.6 Post-reboot race conditions: DNS role and ADWS readiness
+
+Both scripts' Stage 1 depends on two Windows services that a promotion reboot brings up, but neither is guaranteed to be *queryable* the instant the service shows `Running`:
+
+- **DNS Server role** — `Set-DnsServerForwarder` talks to the DNS Server WMI/CIM provider. Right after boot this can throw `WIN32 1722` ("Failed to get information for server AD0X" / RPC server unavailable) even though the `DNS` service itself is already up.
+- **Active Directory Web Services (ADWS)** — every `Get-AD*` cmdlet (`Get-ADDomain`, `Get-ADForest`, `Get-ADDomainController`, ...) depends on it, and it routinely takes longer to initialize than the DNS role, especially on modestly-resourced VMs. The failure mode is `Unable to find a default server with Active Directory Web Services running`.
+
+Both scripts handle this the same way: poll the relevant cmdlet (`Get-DnsServerForwarder` for the DNS role, `Get-ADRootDSE` as a lightweight ADWS probe) every 5 seconds, up to 12 tries (60 seconds), before running the real command. If neither comes up in that window, the script throws a clear, specific error instead of leaving a cryptic CIM exception in the transcript. This is the same retry-until-ready pattern used for the reboot-persistence loop in 7.4, just scoped to a single stage rather than a whole reboot cycle.
+
+### 7.7 UTF-8 BOM required for PowerShell 5.1
+
+Both `phase3-ad0X-unattended.ps1` scripts contain a handful of em-dash (`—`) and box-drawing (`──`) characters in comments and one `Write-Host` string. Windows PowerShell 5.1 (the version on Server Core 2019/2022) doesn't reliably auto-detect BOM-less UTF-8 files passed to `-File` — it can fall back to the system's ANSI codepage instead, corrupting those multi-byte characters and, in the worst case, desyncing the parser badly enough to throw `Unexpected token '}' in expression or statement` at a completely unrelated line (typically the next closing brace after the corruption).
+
+Both scripts as checked into this repo now carry a UTF-8 BOM, so this isn't a step you need to perform — it's noted here only so the cause is documented if it's ever reintroduced (e.g. a future edit saved from a tool that strips the BOM). If you ever do hit that parse error, the fix is to open the file in Notepad and save it (Notepad writes UTF-8 with BOM by default on Windows 10+), or convert it explicitly:
+
+```powershell
+$path = "C:\Provision\phase3-ad01-unattended.ps1"
+$content = Get-Content $path -Raw
+[System.IO.File]::WriteAllText($path, $content, [System.Text.UTF8Encoding]::new($true))
+```
 
 ---
 

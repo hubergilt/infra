@@ -1,4 +1,4 @@
-# phase3-ad01-unattended.ps1
+﻿# phase3-ad01-unattended.ps1
 # Launched ONCE by ad01-autounattend.xml's FirstLogonCommands on ad01 (win19)
 # — Windows Server Core. Fully unattended: hostname (AD01) and static IP
 # (10.0.7.10/24) are already baked into ad01-autounattend.xml, so this script
@@ -92,9 +92,50 @@ if ($stage -eq 1) {
     # Explicit rather than relying on whatever the pre-promotion NIC resolver
     # happened to be — makes the upstream DNS a deliberate, auditable setting
     # instead of an implicit side effect of Install-ADDSForest -InstallDns.
+
+    # The DNS Server role's WMI/CIM provider can lag a few seconds behind
+    # the service reporting "Running" right after a post-promotion reboot,
+    # so Set-DnsServerForwarder can hit a transient WIN32 1722 (RPC server
+    # unavailable). Poll until it actually answers before configuring it.
+    $dnsReady = $false
+    for ($i = 0; $i -lt 12; $i++) {
+        try {
+            Get-DnsServerForwarder -ErrorAction Stop | Out-Null
+            $dnsReady = $true
+            break
+        } catch {
+            Write-Host "[Stage 1] DNS Server role not ready yet, retrying in 5s... ($($i + 1)/12)" -ForegroundColor Yellow
+            Start-Sleep -Seconds 5
+        }
+    }
+    if (-not $dnsReady) {
+        throw "DNS Server role did not become queryable after 60 seconds."
+    }
+
     Set-DnsServerForwarder -IPAddress '1.1.1.1', '1.0.0.1' -UseRootHint $false
 
     Write-Host "[Stage 1] Verifying AD DS and DNS..." -ForegroundColor Cyan
+
+    # Get-AD* cmdlets depend on Active Directory Web Services (ADWS), which
+    # routinely takes longer to come up than the DNS role after a promotion
+    # reboot — hence "Unable to find a default server with Active Directory
+    # Web Services running" even when DNS is already responding. Poll a
+    # lightweight ADWS probe before trusting any Get-AD* call below.
+    $adwsReady = $false
+    for ($i = 0; $i -lt 12; $i++) {
+        try {
+            Get-ADRootDSE -ErrorAction Stop | Out-Null
+            $adwsReady = $true
+            break
+        } catch {
+            Write-Host "[Stage 1] ADWS not ready yet, retrying in 5s... ($($i + 1)/12)" -ForegroundColor Yellow
+            Start-Sleep -Seconds 5
+        }
+    }
+    if (-not $adwsReady) {
+        throw "Active Directory Web Services did not become available after 60 seconds."
+    }
+
     Get-ADDomain | Select-Object DNSRoot, NetBIOSName, DomainMode, Forest | Out-Host
     Get-ADForest | Select-Object Name, ForestMode, SchemaMaster | Out-Host
     Get-ADDomainController | Select-Object Name, IPv4Address, IsGlobalCatalog | Out-Host

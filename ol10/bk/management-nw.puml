@@ -1,0 +1,243 @@
+@startnwdiag
+
+skin rose
+
+<style>
+nwdiagDiagram {
+  network {
+    BackGroundColor #3A3A3A
+    LineColor #888888
+    LineThickness 2.0
+    FontSize 11
+    FontColor #brown
+    FontStyle bold
+  }
+  server {
+    LineThickness 1.0
+    FontSize 11
+    FontColor #maroon
+  }
+  arrow {
+    ' Arrow line color and address label font
+    FontSize 11
+    FontColor #black
+    FontName Monospaced
+    LineColor #gray
+  }
+  group {
+    LineColor #CC4400
+    LineThickness 1.5
+    FontColor #indigo
+    FontSize 10
+    FontStyle bold
+    Margin 5
+    Padding 5
+  }
+  legend {
+    BackGroundColor #lavender
+    LineColor #maroon
+    FontColor #navy
+    FontName Monospaced
+    FontSize 10
+  }
+}
+</style>
+
+title Libvirt Lab for Management & Operations (Segmented)
+skinparam titleFontSize 20
+skinparam titleFontColor #maroon
+
+nwdiag {
+
+  ' ── WAN ────────────────────────────────────────────────────
+  wifi [shape = cloud, description = "Internet\nExternal clients\n(Remote / VPN users)"]
+  wifi -- fw01
+
+  network wan {
+    address = "10.0.0.0/30"
+    color   = "#F5F5F5"
+    width   = full
+
+    hypervisor [address = "10.0.0.1", description = "hypervisor\nKVM · libvirt\nvirbr-wan", shape = node]
+    fw01       [address = "10.0.0.2", description = "fw01\npfSense / OPNsense\nWAN leg"]
+  }
+
+  ' ── Clients — 10.0.4.0/24 ─────────────────────────────────
+  group {
+    color       = "#D1C4E9"
+    description = "Managed — internal clients"
+    client01
+  }
+
+  network clients {
+    address = "10.0.4.0/24"
+    color   = "#5E35B1"
+    width   = full
+
+    fw01     [address = "10.0.4.1",  description = "fw01\nclient gateway"]
+    client01 [address = "10.0.4.10", description = "client01\nDomain-joined workstation"]
+  }
+
+  ' ── DMZ-Web — 10.0.2.0/24 ─────────────────────────────────
+  group {
+    color       = "#FFD0A8"
+    description = "Managed — web edge"
+    waf01
+    lb01
+  }
+
+  group {
+    color       = "#FFE0B2"
+    description = "Managed — web tier"
+    web01
+    web02
+  }
+
+  network dmz_web {
+    address = "10.0.2.0/24"
+    color   = "#E65100"
+    width   = full
+
+    fw01  [address = "10.0.2.1",  description = "fw01\nDMZ-Web gateway"]
+    waf01 [address = "10.0.2.12", description = "waf01\nL7 protection"]
+    web01 [address = "10.0.2.11", description = "web01 — IIS instance A"]
+    web02 [address = "10.0.2.13", description = "web02 — IIS instance B"]
+    lb01  [address = "10.0.2.14", description = "lb01\nLoad balancer"]
+  }
+
+  ' ── DMZ-VPN — 10.0.5.0/24 ─────────────────────────────────
+  group {
+    color       = "#FFCCBC"
+    description = "Managed — VPN edge"
+    vpn01
+  }
+
+  network dmz_vpn {
+    address = "10.0.5.0/24"
+    color   = "#D84315"
+    width   = full
+
+    fw01  [address = "10.0.5.1",  description = "fw01\nDMZ-VPN gateway"]
+    vpn01 [address = "10.0.5.10", description = "vpn01\nManaged via VPN / MDM,\nnot direct domain join"]
+  }
+
+  ' ── App/Gateway — 10.0.1.0/24 ─────────────────────────────
+  group {
+    color       = "#C8E6C9"
+    description = "Managed — application tier"
+    app01
+    app02
+  }
+
+  network app {
+    address = "10.0.1.0/24"
+    color   = "#1565C0"
+    width   = full
+
+    fw01  [address = "10.0.1.1",  description = "fw01\nApp/Gateway gateway"]
+    app01 [address = "10.0.1.40", description = "app01 — .NET instance A"]
+    app02 [address = "10.0.1.42", description = "app02 — .NET instance B"]
+  }
+
+  ' ── Data — 10.0.6.0/24 ────────────────────────────────────
+  group {
+    color       = "#BBDEFB"
+    description = "Managed — data tier"
+    sql01
+    sql02
+    fs01
+    fs02
+    ora01
+  }
+
+  network data {
+    address = "10.0.6.0/24"
+    color   = "#0D47A1"
+    width   = full
+
+    fw01  [address = "10.0.6.1",  description = "fw01\nData gateway"]
+    sql01 [address = "10.0.6.70", description = "sql01 — SQL primary"]
+    sql02 [address = "10.0.6.71", description = "sql02 — SQL replica"]
+    fs01  [address = "10.0.6.31", description = "fs01 — File server active"]
+    fs02  [address = "10.0.6.32", description = "fs02 — File server standby"]
+    ora01 [address = "10.0.6.80", description = "ora01 — Oracle Linux 10.1\nOracle AI Database 23ai\nCDB=ORCL / PDB=ORCLPDB\nListener :1521"]
+  }
+
+  ' ── Identity/PKI — 10.0.7.0/24 ────────────────────────────
+  group {
+    color       = "#B39DDB"
+    description = "Managed — identity tier"
+    ad01
+    ad02
+    ca01
+    ca02
+  }
+
+  network identity {
+    address = "10.0.7.0/24"
+    color   = "#4527A0"
+    width   = full
+
+    fw01 [address = "10.0.7.1",  description = "fw01\nIdentity/PKI gateway"]
+    ad01 [address = "10.0.7.10", description = "ad01 — Primary DC"]
+    ad02 [address = "10.0.7.11", description = "ad02 — Replica DC"]
+    ca01 [address = "10.0.7.20", description = "ca01 — Offline root CA"]
+    ca02 [address = "10.0.7.21", description = "ca02 — Issuing CA / ADCS"]
+  }
+
+  ' ── MGMT — 10.0.3.0/24 · isolated control plane ───────────
+  group {
+    color       = "#FFF59D"
+    description = "Patch & Config"
+    sccm01
+  }
+
+  group {
+    color       = "#F8BBD0"
+    description = "Monitoring & Audit"
+    siem01
+  }
+
+  group {
+    color       = "#B3E5FC"
+    description = "Backup & Recovery"
+    backup01
+  }
+
+  group {
+    color       = "#CFD8DC"
+    description = "Admin Access"
+    jump01
+  }
+
+  network mgmt {
+    address = "10.0.3.0/24"
+    color   = "#2E7D32"
+    width   = full
+
+    hypervisor [address = "10.0.3.254", description = "hypervisor\nKVM · libvirt\nvirbr-mgmt", shape = node]
+    fw01       [address = "10.0.3.1",   description = "fw01\nmgmt console"]
+    jump01     [address = "10.0.3.10",  description = "jump01\nBastion / RDP gateway —\nsole admin entry point"]
+
+    sccm01     [address = "10.0.3.20",  description = "sccm01\nSCCM Endpoint Manager —\nMGMT-only, no LAN presence"]
+    siem01     [address = "10.0.3.21",  description = "siem01\nSIEM — MGMT-only,\nno LAN presence"]
+    backup01   [address = "10.0.3.22",  description = "backup01\nBackup server — MGMT-only,\non-prem (offsite/DR gap)"]
+
+    ' edge devices — OOB mgmt legs
+    vpn01      [address = "10.0.3.11",  description = "vpn01 — OOB mgmt leg"]
+    waf01      [address = "10.0.3.12",  description = "waf01 — OOB mgmt leg"]
+    lb01       [address = "10.0.3.13",  description = "lb01 — OOB mgmt leg"]
+    rodc01     [address = "10.0.3.14",  description = "rodc01 — OOB mgmt leg"]
+  }
+
+}
+
+legend
+  App/GW — via ACL              Data — ACL only               Identity/PKI — ACL only       MGMT — mgmt servers live      Patch: sccm->all (ACL)        Patch: ext=VPN/MDM,edge=fw
+  Log: all->siem01 (ACL)        Backup: tiers->backup01       Admin: jump01=sole path        ora01: app01/app02->1521
+  Corrections vs. prior design:
+  sccm/siem/bkup=MGMT-only      backup01: offsite=gap         Gap: fw/vpn/waf/lb no HA      Domain: ad.lab
+  Added: ora01 (Oracle AI DB 23ai, data tier) — sourced from Phase 7 install (see oracle/README.md)
+end legend
+
+@endnwdiag
