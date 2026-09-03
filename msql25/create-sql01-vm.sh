@@ -14,7 +14,7 @@
 # console interaction: OS install -> first boot -> locate SQL CD-ROM ->
 # unattended SQL Server install -> verify -> ready. See msql25/README.md
 # for how the chain works. Lives alongside dcs/ (ad01/domain-controller
-# scripts) and win19/ (Windows Server 2019 media + NetKVM drivers) at
+# scripts) and win25/ (Windows Server 2025 media + NetKVM drivers) at
 # the repo root.
 #
 # Requirements: p7zip-full, genisoimage, qemu-utils, virtinst, ovmf
@@ -28,9 +28,10 @@ set -e
 VM_NAME="${1:-sql01}"
 
 # Windows Server install media. SQL Server 2025 needs Windows Server 2016+;
-# reuses the same media as create-ad01-vm.sh by default. Point this at
-# 2022/2025 media instead if that's what you'd rather run SQL on.
-ORIG_ISO="/home/huber/Downloads/en-us_windows_server_2019_x64_dvd_f9475476.iso"
+# now uses the same Windows Server 2025 media as create-win25-unnatend.sh
+# (win25/) instead of the older 2019 media. Point this elsewhere if you'd
+# rather run SQL on a different Windows Server version.
+ORIG_ISO="/home/huber/Downloads/en-us_windows_server_2025_updated_july_2026_x64_dvd_4e6f5a42.iso"
 
 # SQL Server 2025 install media — attached to the VM as a second CD-ROM
 # rather than extracted into the Windows ISO (it's ~6GB and WinPE never
@@ -43,12 +44,12 @@ SQL_CONFIG_FILE="$(pwd)/ConfigurationFile.ini"
 NEW_ISO="$(pwd)/${VM_NAME}-unattended.iso"
 WORK_DIR="/tmp/${VM_NAME}-iso-work"
 DISK_PATH="/vms/${VM_NAME}.qcow2"
-NETKVM_SRC="$(pwd)/../win19/NetKVM"
+NETKVM_SRC="$(pwd)/../win25/NetKVM"
 NETKVM_DST="$WORK_DIR/NetKVM"
 DISK_SIZE=80
 RAM=4096
 VCPUS=4
-NETWORK="lab-identity"
+NETWORK="lab-data"
 
 # Dependency check
 for cmd in 7z genisoimage qemu-img virt-install; do
@@ -87,7 +88,7 @@ cp "$ANSWER_FILE" "$WORK_DIR/autounattend.xml"
 if [ ! -d "$NETKVM_SRC" ]; then
     echo "ERROR: NetKVM driver folder not found at $NETKVM_SRC"
     echo "  Download virtio-win drivers from https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/stable-virtio/"
-    echo "  and place the NetKVM/w2k19/amd64/ contents in ../win19/NetKVM/"
+    echo "  and place the NetKVM/w2k22/amd64/ contents in ../win25/NetKVM/"
     exit 1
 fi
 cp -r "$NETKVM_SRC" "$NETKVM_DST"
@@ -136,7 +137,7 @@ virt-install \
     --name "$VM_NAME" \
     --ram "$RAM" \
     --vcpus "$VCPUS" \
-    --os-variant win2k19 \
+    --os-variant win2k22 \
     --machine q35 \
     --boot uefi \
     --disk path="$DISK_PATH",format=qcow2,bus=sata \
