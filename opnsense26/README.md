@@ -1,296 +1,348 @@
-# nets — Libvirt Network Definitions
+# fw01 — OPNsense 26 Firewall
 
-Libvirt virtual network definitions for the **fw01.ad.lab** KVM lab.
-All networks are isolated segments routed through **fw01** (OPNsense 26).
-No VM has direct internet access except through fw01's firewall rules.
+**fw01.ad.lab** is the perimeter and inter-segment firewall for the ad.lab KVM lab.
+It runs OPNsense 26.1 on FreeBSD, managed as a libvirt VM (`qemu:///system`).
 
 ---
 
-## Network layout
+## Files in this folder
+
+| File | Purpose |
+|---|---|
+| `create-opnsense26.sh` | Creates and launches the fw01 VM with a pre-loaded config disk |
+| `config.xml` | Active OPNsense configuration (interfaces + firewall rules) |
+| `config-default.xml` | Vanilla OPNsense defaults — baseline reference |
+| `config-fw01.ad.lab-20260422155246.xml` | Snapshot backup taken 2026-04-22 |
+| `opnsense_config.ini` | Human-readable network layout reference (not imported by OPNsense) |
+
+---
+
+## Network interfaces
+
+fw01 has 8 NICs mapped to 8 libvirt networks. Interface order matches `virt-install` NIC order.
+
+| OPNsense iface | vtnet | libvirt network | Bridge | IP | Subnet | Role |
+|---|---|---|---|---|---|---|
+| WAN | vtnet0 | lab-wan | virbr-wan | 10.0.0.2 | /30 | Point-to-point to host NAT |
+| LAN (APP) | vtnet1 | lab-app | virbr-app | 10.0.1.1 | /24 | App tier — api_gw, dhcp01, app VMs |
+| OPT1 (DMZ_WEB) | vtnet2 | lab-dmz-web | virbr-dmzweb | 10.0.2.1 | /24 | Public web — waf01, web01, lb01 |
+| OPT2 (MGMT) | vtnet3 | lab-mgmt | virbr-mgmt | 10.0.3.1 | /24 | Control plane — jump01, SIEM |
+| OPT3 (CLIENTS) | vtnet4 | lab-clients | virbr-clients | 10.0.4.1 | /24 | Workstations — DHCP relayed from dhcp01 |
+| OPT4 (DMZ_VPN) | vtnet5 | lab-dmz-vpn | virbr-dmzvpn | 10.0.5.1 | /24 | Remote access — vpn01, rodc01 (VPN leg) |
+| OPT5 (DATA) | vtnet6 | lab-data | virbr-data | 10.0.6.1 | /24 | Data tier — sql01, ora01, fs01, fs02 |
+| OPT6 (IDENTITY) | vtnet7 | lab-identity | virbr-identity | 10.0.7.1 | /24 | Identity — ad01, ad02, ca01, ca02 |
+
+The WAN gateway is `10.0.0.1` (host's `virbr-wan` bridge). The host masquerades fw01's traffic out to the home router via iptables NAT on the Wi-Fi interface.
+
+---
+
+## Firewall rules summary
+
+All segments use **default-deny at the bottom** with explicit pass rules above. MGMT is the only fully permissive segment (admin plane).
+
+### WAN (inbound from internet)
+
+| Action | Proto | Destination | Port | Notes |
+|---|---|---|---|---|
+| pass | TCP | 10.0.2.12 (waf01) | 443 | HTTPS ingress |
+| pass | TCP | 10.0.5.10 (vpn01) | 443 | SSL-VPN |
+| pass | UDP | 10.0.5.10 (vpn01) | 500 | IKEv2 |
+| pass | UDP | 10.0.5.10 (vpn01) | 4500 | IKEv2 NAT-T |
+| **block** | any | any | — | default deny (logged) |
+
+### DMZ_WEB → other segments
+
+| Action | Proto | Destination | Port | Notes |
+|---|---|---|---|---|
+| pass | TCP | 10.0.1.41 (api_gw01) | 443, 8443 | Web tier → API gateway |
+| pass | TCP | 10.0.1.43 (api_gw02) | 443, 8443 | Web tier → API gateway HA |
+| pass | TCP | 10.0.7.21 (ca02) | 80 | CDP / OCSP for TLS cert validation |
+| **block** | any | any | — | default deny (logged) |
+
+### DMZ_VPN → other segments
+
+| Action | Proto | Destination | Notes |
+|---|---|---|---|
+| pass | any | 10.0.4.0/24 (CLIENTS) | Post-auth VPN client traffic |
+| pass | any | 10.0.1.0/24 (APP) | Post-auth VPN client traffic |
+| **block** | any | any | default deny (logged) |
+
+> vpn01 is single-armed (DMZ_VPN NIC only). fw01 routes decrypted VPN client traffic into the appropriate segment. DMZ_VPN cannot reach DMZ_WEB.
+
+### APP → other segments
+
+| Action | Proto | Destination | Port | Notes |
+|---|---|---|---|---|
+| pass | TCP | 10.0.6.70 (sql01) | 1433 | SQL Server |
+| pass | TCP | 10.0.6.80 (ora01) | 1521 | Oracle SQL*Net |
+| pass | TCP | 10.0.6.31 (fs01) | 445 | SMB |
+| pass | TCP | 10.0.6.32 (fs02) | 445 | SMB |
+| pass | TCP/UDP | 10.0.7.0/24 (IDENTITY) | 88 | Kerberos |
+| pass | TCP | 10.0.7.0/24 (IDENTITY) | 389 | LDAP |
+| pass | TCP | 10.0.7.0/24 (IDENTITY) | 445 | SMB / Netlogon |
+| pass | TCP | 10.0.7.0/24 (IDENTITY) | 636 | LDAPS |
+| pass | TCP | 10.0.7.0/24 (IDENTITY) | 3268–3269 | Global Catalog |
+| pass | UDP | 10.0.1.30 (dhcp01) | 67–68 | DHCP |
+| **block** | any | any | — | default deny (logged) |
+
+### CLIENTS → other segments
+
+| Action | Proto | Destination | Port | Notes |
+|---|---|---|---|---|
+| pass | TCP | 10.0.1.0/24 (APP) | 443, 8443 | Client → app/api |
+| pass | UDP | 10.0.1.30 (dhcp01) | 67–68 | DHCP relay |
+| **block** | any | any | — | default deny (logged) |
+
+### DATA, IDENTITY
+
+Both segments are **default deny with no outbound pass rules** — all connections are initiated inbound from APP or MGMT. Servers in these segments do not open outbound connections to other segments.
+
+### MGMT
+
+Full pass to any destination — jump01 and management tools need unrestricted access for administration.
+
+---
+
+## Creating fw01 from scratch
+
+### Prerequisites
+
+```bash
+sudo apt install virtinst qemu-utils mtools dosfstools
+```
+
+All libvirt networks must exist and be active before running the script:
+
+```bash
+cd ../nets
+make create-networks   # creates all 8 networks
+make verify            # confirms IPs are correct
+```
+
+### Run the installer
+
+```bash
+cd opnsense26
+./create-opnsense26.sh
+```
+
+The script:
+1. Destroys any existing `fw01` VM and disk
+2. Creates a fresh 20 GB qcow2 disk at `/vms/fw01.qcow2`
+3. Builds a 64 MB FAT32 raw image at `/vms/fw01-config.img` containing `conf/config.xml`
+4. Launches fw01 with the OPNsense ISO as boot device and the config disk as USB
+
+### Config importer prompt
+
+Watch the console immediately after boot:
+
+```bash
+virt-viewer fw01
+# or
+virsh console fw01
+```
+
+When you see:
 
 ```
-Internet
-    │
-    │ (home router 192.168.18.1)
-    │
- wlxd03745b49f87 (host Wi-Fi — 192.168.18.23)
-    │  ← iptables MASQUERADE (host NAT)
-    │
- virbr-wan  10.0.0.1/30          ← lab-wan
-    │
- fw01  10.0.0.2/30  (vtnet0)
-    ├── vtnet1  10.0.1.1/24   virbr-app       ← lab-app
-    ├── vtnet2  10.0.2.1/24   virbr-dmzweb    ← lab-dmz-web
-    ├── vtnet3  10.0.3.1/24   virbr-mgmt      ← lab-mgmt
-    ├── vtnet4  10.0.4.1/24   virbr-clients   ← lab-clients
-    ├── vtnet5  10.0.5.1/24   virbr-dmzvpn    ← lab-dmz-vpn
-    ├── vtnet6  10.0.6.1/24   virbr-data      ← lab-data
-    └── vtnet7  10.0.7.1/24   virbr-identity  ← lab-identity
+Press any key to start the configuration importer
+```
+
+Press any key and enter the config disk device — usually `da0` or `da1`. A successful import shows:
+
+```
+Configuration loaded
+```
+
+OPNsense then boots into the live environment with interfaces already assigned. Log in as `installer / opnsense` and complete the disk installation normally.
+
+### Adding new NICs after initial install
+
+If you add new libvirt networks (e.g. expanding from 4 to 8 segments):
+
+```bash
+# Shut down fw01
+sudo virsh shutdown fw01
+
+# Attach new NICs in order
+sudo virsh attach-interface fw01 network lab-clients  --model virtio --config
+sudo virsh attach-interface fw01 network lab-dmz-vpn  --model virtio --config
+sudo virsh attach-interface fw01 network lab-data     --model virtio --config
+sudo virsh attach-interface fw01 network lab-identity --model virtio --config
+
+sudo virsh start fw01
+```
+
+Then in OPNsense: **Interfaces → Assignments** to map the new `vtnetX` devices, and **Interfaces → [name] → Edit** to set the IPs from the table above.
+
+---
+
+## Restoring config.xml
+
+To apply a new or updated `config.xml` without reinstalling:
+
+**Method 1 — WebGUI** (preferred)
+
+```
+System → Configuration → Backups → Restore
+```
+
+Upload `config.xml` and reboot.
+
+**Method 2 — Console shell**
+
+```bash
+virsh console fw01
+# Option 8 → Shell
+cp /mnt/conf/config.xml /conf/config.xml    # if config disk still attached
+# or scp from host:
+scp config.xml root@10.0.3.1:/conf/config.xml
+/usr/local/etc/rc.reload_all
 ```
 
 ---
 
-## Networks
+## Static IP assignments
 
-### lab-wan — `10.0.0.0/30`
+### APP (10.0.1.0/24)
 
-Point-to-point link between fw01 and the host hypervisor bridge.
-The host side (`10.0.0.1`) masquerades fw01's traffic out through the Wi-Fi interface.
-This is the **only** network with `<forward mode='nat'>` — all others are isolated.
-
-| | |
-|---|---|
-| Bridge | `virbr-wan` |
-| Host IP | `10.0.0.1` |
-| fw01 WAN IP | `10.0.0.2` |
-| Mode | NAT (forward to host Wi-Fi) |
-
----
-
-### lab-app — `10.0.1.0/24`
-
-Application tier. Holds the API gateways, app servers, shared services (DHCP, file, CA).
-fw01 is the gateway at `10.0.1.1`. DHCP scope `.50–.200` served by dhcp01 (`10.0.1.30`).
-
-| | |
-|---|---|
-| Bridge | `virbr-app` |
-| Host bridge IP | `10.0.1.254` |
-| fw01 APP IP | `10.0.1.1` |
-| Mode | Isolated (no NAT) |
-| DHCP | Served by `dhcp01` (10.0.1.30) |
-
-Static assignments:
-
-| IP | Host | Role |
+| IP | Hostname | Role |
 |---|---|---|
-| 10.0.1.1 | fw01 | Gateway |
-| 10.0.1.10 | ad01.ad.lab | Primary DC / DNS1 (APP NIC) |
-| 10.0.1.11 | ad02.ad.lab | Replica DC (APP NIC) |
+| 10.0.1.1 | fw01 | Firewall gateway |
+| 10.0.1.10 | ad01.ad.lab | Primary DC / DNS1 |
+| 10.0.1.11 | ad02.ad.lab | Replica DC |
 | 10.0.1.20 | ca01.ad.lab | Offline Root CA |
-| 10.0.1.21 | ca02.ad.lab | Issuing CA / ADCS |
+| 10.0.1.21 | ca02.ad.lab | Issuing CA (ADCS) |
 | 10.0.1.30 | dhcp01.ad.lab | DHCP server |
-| 10.0.1.31 | fs01.ad.lab | File server |
-| 10.0.1.32 | fs02.ad.lab | File server replica |
+| 10.0.1.31 | fs01.ad.lab | File server / DNS2 |
 | 10.0.1.40 | app01.ad.lab | IIS app server |
 | 10.0.1.41 | api_gw01.ad.lab | API gateway |
 | 10.0.1.43 | api_gw02.ad.lab | API gateway (HA) |
 | 10.0.1.50–200 | — | DHCP pool |
 
----
+### DMZ_WEB (10.0.2.0/24)
 
-### lab-dmz-web — `10.0.2.0/24`
-
-Public-facing web tier. Receives inbound HTTPS from the internet via fw01 DNAT to waf01.
-No DHCP — all static. Can reach api_gw and ca02 (CDP/OCSP) only; blocked from all other internal segments.
-
-| | |
-|---|---|
-| Bridge | `virbr-dmzweb` |
-| Host bridge IP | `10.0.2.254` |
-| fw01 DMZ_WEB IP | `10.0.2.1` |
-| Mode | Isolated (no NAT) |
-| DHCP | None — static only |
-
-Static assignments:
-
-| IP | Host | Role |
+| IP | Hostname | Role |
 |---|---|---|
-| 10.0.2.1 | fw01 | Gateway |
+| 10.0.2.1 | fw01 | Firewall gateway |
 | 10.0.2.10 | lb01.ad.lab | Load balancer |
 | 10.0.2.11 | web01.ad.lab | IIS web server |
-| 10.0.2.12 | waf01.ad.lab | Reverse proxy / WAF (internet-facing) |
-| 10.0.2.15 | rodc01-web.ad.lab | RODC — Kerberos/LDAP for web tier |
+| 10.0.2.12 | waf01.ad.lab | Reverse proxy / WAF (ARR) |
+| 10.0.2.15 | rodc01-dmzweb.ad.lab | RODC (DMZ-Web leg) |
 
----
+### MGMT (10.0.3.0/24)
 
-### lab-mgmt — `10.0.3.0/24`
-
-Out-of-band management plane. Only jump01 has access to other segments via fw01 rules.
-No DHCP — all static. SIEM collects syslog here.
-
-| | |
-|---|---|
-| Bridge | `virbr-mgmt` |
-| Host bridge IP | `10.0.3.254` |
-| fw01 MGMT IP | `10.0.3.1` |
-| Mode | Isolated (no NAT) |
-| DHCP | None — static only |
-
-Static assignments:
-
-| IP | Host | Role |
+| IP | Hostname | Role |
 |---|---|---|
-| 10.0.3.1 | fw01 | Gateway |
-| 10.0.3.10 | jump01.ad.lab | Bastion / admin workstation |
+| 10.0.3.1 | fw01 | Firewall gateway |
+| 10.0.3.10 | jump01 (MGMT NIC) | Bastion host |
 | 10.0.3.20 | siem01.ad.lab | SIEM / log collector |
 | 10.0.3.30 | sccm01.ad.lab | SCCM / patch management |
 | 10.0.3.40 | backup01.ad.lab | Backup server |
 | 10.0.3.254 | — | virbr-mgmt host bridge |
 
----
+### CLIENTS (10.0.4.0/24)
 
-### lab-clients — `10.0.4.0/24`
-
-Domain-joined workstations. DHCP relayed by fw01 to dhcp01 (`10.0.1.30`).
-Clients can reach APP (HTTPS/8443) and browse the internet; blocked from DATA, IDENTITY, and MGMT.
-
-| | |
-|---|---|
-| Bridge | `virbr-clients` |
-| Host bridge IP | `10.0.4.254` |
-| fw01 CLIENTS IP | `10.0.4.1` |
-| Mode | Isolated (no NAT) |
-| DHCP | Relayed by fw01 → dhcp01 (10.0.1.30), pool .50–.200 |
-
----
-
-### lab-dmz-vpn — `10.0.5.0/24`
-
-Remote access tier. vpn01 is **single-armed** — it has only one NIC on this segment.
-fw01 receives IKEv2/SSL-VPN from the internet (via DNAT), decrypts, and routes traffic into APP or CLIENTS.
-DMZ_VPN cannot reach DMZ_WEB.
-
-| | |
-|---|---|
-| Bridge | `virbr-dmzvpn` |
-| Host bridge IP | `10.0.5.254` |
-| fw01 DMZ_VPN IP | `10.0.5.1` |
-| Mode | Isolated (no NAT) |
-| DHCP | None — static only |
-
-Static assignments:
-
-| IP | Host | Role |
+| IP | Hostname | Role |
 |---|---|---|
-| 10.0.5.1 | fw01 | Gateway |
-| 10.0.5.10 | vpn01.ad.lab | VPN gateway (RRAS / IKEv2, single-armed) |
-| 10.0.5.15 | rodc01-vpn.ad.lab | RODC — auth for VPN clients |
+| 10.0.4.1 | fw01 | Firewall gateway / DHCP relay |
+| 10.0.4.50–200 | — | DHCP pool (served by dhcp01 via relay) |
 
----
+### DMZ_VPN (10.0.5.0/24)
 
-### lab-data — `10.0.6.0/24`
-
-Data tier. No internet access. No outbound connections initiated from this segment.
-All traffic is inbound from APP (SQL/SMB) or MGMT (admin/backup).
-
-| | |
-|---|---|
-| Bridge | `virbr-data` |
-| Host bridge IP | `10.0.6.254` |
-| fw01 DATA IP | `10.0.6.1` |
-| Mode | Isolated (no NAT) |
-| DHCP | None — static only |
-
-Static assignments:
-
-| IP | Host | Role |
+| IP | Hostname | Role |
 |---|---|---|
-| 10.0.6.1 | fw01 | Gateway |
+| 10.0.5.1 | fw01 | Firewall gateway |
+| 10.0.5.10 | vpn01.ad.lab | VPN gateway (RRAS / IKEv2) |
+| 10.0.5.15 | rodc01-dmzvpn.ad.lab | RODC (DMZ-VPN leg) |
+
+### DATA (10.0.6.0/24)
+
+| IP | Hostname | Role |
+|---|---|---|
+| 10.0.6.1 | fw01 | Firewall gateway |
 | 10.0.6.31 | fs01.ad.lab | File server (data NIC) |
 | 10.0.6.32 | fs02.ad.lab | File server replica |
 | 10.0.6.70 | sql01.ad.lab | SQL Server |
 | 10.0.6.80 | ora01.ad.lab | Oracle DB |
 
----
+### IDENTITY (10.0.7.0/24)
 
-### lab-identity — `10.0.7.0/24`
-
-Identity and PKI tier. No internet access. No outbound connections from this segment.
-Hosts the writable DCs and the two-tier PKI. ca01's NIC should be disconnected during normal operations.
-
-| | |
-|---|---|
-| Bridge | `virbr-identity` |
-| Host bridge IP | `10.0.7.254` |
-| fw01 IDENTITY IP | `10.0.7.1` |
-| Mode | Isolated (no NAT) |
-| DHCP | None — static only |
-
-Static assignments:
-
-| IP | Host | Role |
+| IP | Hostname | Role |
 |---|---|---|
-| 10.0.7.1 | fw01 | Gateway |
-| 10.0.7.10 | ad01.ad.lab | Primary DC / DNS1 |
-| 10.0.7.11 | ad02.ad.lab | Replica DC / DNS2 |
-| 10.0.7.20 | ca01.ad.lab | Offline Root CA (NIC disconnected at rest) |
-| 10.0.7.21 | ca02.ad.lab | Issuing CA / ADCS Web Enrollment |
+| 10.0.7.1 | fw01 | Firewall gateway |
+| 10.0.7.10 | ad01 (IDENTITY NIC) | Primary DC |
+| 10.0.7.11 | ad02 (IDENTITY NIC) | Replica DC |
+| 10.0.7.20 | ca01.ad.lab | Offline Root CA |
+| 10.0.7.21 | ca02.ad.lab | Issuing CA |
 
 ---
 
-## Usage
+## Common operations
 
-### Create all networks (fresh install)
+### Check fw01 status
 
 ```bash
-make create-networks
+sudo virsh dominfo fw01
+sudo virsh domiflist fw01
 ```
 
-Defines, starts, and autostarts all 8 networks. Prints a status table on completion.
-
-### Verify everything is up and on the correct IPs
+### Console access
 
 ```bash
-make verify
+sudo virsh console fw01
+# Escape: Ctrl+]
 ```
 
-### Tear everything down
+### Reboot fw01
 
 ```bash
-make delete-networks
+# From OPNsense console → option 6
+# Or from host:
+sudo virsh reboot fw01
 ```
 
-### Other targets
+### Verify internet from fw01
 
 ```bash
-make start-networks    # start without redefining
-make stop-networks     # stop without undefining
-make restart-networks  # stop then start
-make status            # bridge IPs from libvirt and host
-make clean             # remove any inactive/leftover definitions
+# From fw01 shell (console option 8):
+fetch -o - http://example.com
+# or
+ping -c 3 8.8.8.8
+```
+
+If ping fails but fetch works, the home router is blocking forwarded ICMP — internet connectivity is still functional.
+
+### Backup running config
+
+```bash
+# From host — pull via scp over MGMT interface
+scp root@10.0.3.1:/conf/config.xml \
+    config-fw01.ad.lab-$(date +%Y%m%d%H%M%S).xml
 ```
 
 ---
 
-## Host NAT requirements
+## Host NAT setup (required for internet)
 
-`lab-wan` provides the bridge, but the host still needs iptables rules to masquerade
-fw01's traffic out through the Wi-Fi interface. These must survive reboots:
+fw01's WAN traffic exits via the host's Wi-Fi interface. These iptables rules must survive reboots (saved by `iptables-persistent`):
 
 ```bash
-# Masquerade fw01 ICMP (libvirt's NAT rule only covers TCP/UDP ports)
+# Masquerade fw01 WAN traffic out through Wi-Fi
 sudo iptables -t nat -I POSTROUTING 1 \
   -s 10.0.0.0/30 -o wlxd03745b49f87 -p icmp -j MASQUERADE
 
-# Allow forwarding between virbr-wan and Wi-Fi
+# Forward rules before libvirt chains
 sudo iptables -I FORWARD 1 -i virbr-wan -o wlxd03745b49f87 -j ACCEPT
 sudo iptables -I FORWARD 2 -i wlxd03745b49f87 -o virbr-wan \
   -m state --state RELATED,ESTABLISHED -j ACCEPT
 
-# Persist across reboots
-sudo apt install iptables-persistent
+# Persist
 sudo netfilter-persistent save
 ```
 
-> The interface name `wlxd03745b49f87` is specific to this host. Verify with `ip link show`.
+> The Wi-Fi interface name `wlxd03745b49f87` is specific to this host. Verify with `ip link show`.
 
 ---
 
-## Files
-
-| File | Network | Subnet |
-|---|---|---|
-| `lab-wan.xml` | lab-wan | 10.0.0.0/30 |
-| `lab-app.xml` | lab-app | 10.0.1.0/24 |
-| `lab-dmz-web.xml` | lab-dmz-web | 10.0.2.0/24 |
-| `lab-mgmt.xml` | lab-mgmt | 10.0.3.0/24 |
-| `lab-clients.xml` | lab-clients | 10.0.4.0/24 |
-| `lab-dmz-vpn.xml` | lab-dmz-vpn | 10.0.5.0/24 |
-| `lab-data.xml` | lab-data | 10.0.6.0/24 |
-| `lab-identity.xml` | lab-identity | 10.0.7.0/24 |
-| `Makefile` | — | all targets |
-
----
-
-*ad.lab nets — August 2026*
+*ad.lab fw01 Reference — OPNsense 26 — August 2026*
