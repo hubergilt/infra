@@ -82,17 +82,27 @@ New-NetFirewallRule -DisplayName 'SQL Server (TCP 1433)' -Direction Inbound `
 
 # ---------------------------------------------------------------------
 # 3. Locate the SQL Server CD-ROM (distinct from the Windows install
-#    media by the presence of x64\setup.exe).
+#    media, which also has a root-level setup.exe, by the presence of
+#    SqlSetupBootstrapper.dll - unique to the SQL Server install media.
+#    NOTE: SQL Server 2025 media dropped the old x64\setup.exe path -
+#    the bootstrapper now lives at the media root as plain setup.exe.
 # ---------------------------------------------------------------------
 Write-Log "Looking for SQL Server install media among attached optical drives..."
 $sqlDrive = $null
 $deadline = (Get-Date).AddMinutes(5)
 while (-not $sqlDrive -and (Get-Date) -lt $deadline) {
-    $cdroms = Get-Volume | Where-Object { $_.DriveType -eq 'CD-ROM' -and $_.DriveLetter }
+    # Get-Volume (Storage Management API) does not reliably enumerate
+    # optical/CD-ROM volumes on this platform (QEMU SATA CD-ROMs under
+    # Windows Server) - it can come back empty even with media loaded
+    # and a drive letter assigned. Win32_CDROMDrive (legacy WMI class)
+    # sees them correctly, so use that instead.
+    $cdroms = Get-CimInstance Win32_CDROMDrive -ErrorAction SilentlyContinue |
+        Where-Object { $_.MediaLoaded -and $_.Drive }
     foreach ($vol in $cdroms) {
-        $candidate = "$($vol.DriveLetter):\x64\setup.exe"
-        if (Test-Path $candidate) {
-            $sqlDrive = "$($vol.DriveLetter):"
+        $marker = Join-Path $vol.Drive 'SqlSetupBootstrapper.dll'
+        $setup  = Join-Path $vol.Drive 'setup.exe'
+        if ((Test-Path $marker) -and (Test-Path $setup)) {
+            $sqlDrive = $vol.Drive
             break
         }
     }
@@ -103,7 +113,7 @@ while (-not $sqlDrive -and (Get-Date) -lt $deadline) {
 }
 
 if (-not $sqlDrive) {
-    Write-Log "ERROR: could not find SQL Server install media (x64\setup.exe) on any attached CD-ROM after 5 minutes."
+    Write-Log "ERROR: could not find SQL Server install media (setup.exe + SqlSetupBootstrapper.dll) on any attached CD-ROM after 5 minutes."
     Set-Content -Path $StageFile -Value 'error-no-media'
     exit 1
 }
@@ -161,16 +171,43 @@ switch ($proc.ExitCode) {
 }
 
 # ---------------------------------------------------------------------
-# 5. Verify: query @@VERSION via sqlcmd.
+# 5. Locate sqlcmd.exe (setup.exe installs it under the ODBC Client SDK
+#    path, e.g. ...\Client SDK\ODBC\180\Tools\Binn\, but never adds it
+#    to PATH), add its folder to the machine PATH permanently so it's
+#    usable from any future session/RDP login, then verify @@VERSION.
+#    ODBC Driver 18+ defaults to encrypted connections and validates
+#    the server cert, which fails against this instance's self-signed
+#    cert - pass -C to trust it, same as connecting from a lab/dev tool.
 # ---------------------------------------------------------------------
-Write-Log "Verifying instance with sqlcmd..."
-try {
-    $sqlcmd = Get-Command sqlcmd -ErrorAction Stop
-    $version = & $sqlcmd.Source -S localhost -U sa -P $saPassword -Q "SET NOCOUNT ON; SELECT @@VERSION;" -h -1
-    Write-Log "sqlcmd verification succeeded: $($version -join ' ')"
-    Set-Content -Path $StageFile -Value '2'
-} catch {
-    Write-Log "WARNING: sqlcmd verification failed or sqlcmd not on PATH ($_). Instance may still be fine - verify manually."
+Write-Log "Locating sqlcmd.exe..."
+$sqlcmdExe = Get-ChildItem "C:\Program Files\Microsoft SQL Server" -Recurse -Filter 'sqlcmd.exe' -ErrorAction SilentlyContinue |
+    Select-Object -First 1 -ExpandProperty FullName
+
+if (-not $sqlcmdExe) {
+    Write-Log "WARNING: sqlcmd.exe not found under C:\Program Files\Microsoft SQL Server. Instance may still be fine - verify manually."
+} else {
+    $sqlcmdDir = Split-Path $sqlcmdExe -Parent
+    Write-Log "Found sqlcmd.exe at $sqlcmdExe"
+
+    $machinePath = [Environment]::GetEnvironmentVariable('Path', 'Machine')
+    if (($machinePath -split ';') -notcontains $sqlcmdDir) {
+        [Environment]::SetEnvironmentVariable('Path', "$machinePath;$sqlcmdDir", 'Machine')
+        Write-Log "Added $sqlcmdDir to the machine PATH (persists across sessions/reboots)."
+    } else {
+        Write-Log "$sqlcmdDir already on the machine PATH."
+    }
+    # Update this process's PATH too, so the verification below works
+    # without needing a new session.
+    $env:Path = "$env:Path;$sqlcmdDir"
+
+    Write-Log "Verifying instance with sqlcmd..."
+    try {
+        $version = & $sqlcmdExe -S localhost -U sa -P $saPassword -C -Q "SET NOCOUNT ON; SELECT @@VERSION;" -h -1
+        Write-Log "sqlcmd verification succeeded: $($version -join ' ')"
+        Set-Content -Path $StageFile -Value '2'
+    } catch {
+        Write-Log "WARNING: sqlcmd verification failed ($_). Instance may still be fine - verify manually."
+    }
 }
 
 New-Item -Path $MarkerFile -ItemType File -Force | Out-Null

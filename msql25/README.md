@@ -38,13 +38,21 @@ This lives alongside `dcs/` (the `ad01`/domain-controller scripts) and
    logon — runs `phase3-sql01-unattended.ps1` exactly once
    (`FirstLogonCommands`).
 4. That script finds the SQL Server CD-ROM (by looking for
-   `x64\setup.exe`, which distinguishes it from the Windows install media),
+   `SqlSetupBootstrapper.dll` alongside a root-level `setup.exe`, which
+   distinguishes it from the Windows install media — Windows media also
+   has a root `setup.exe`, but never this DLL; SQL Server 2025 dropped
+   the older `x64\setup.exe` path entirely, so don't key off that),
    generates a random `sa` password, and runs:
    ```
    setup.exe /ConfigurationFile=C:\Provision\ConfigurationFile.ini /SAPWD=... /IACCEPTSQLSERVERLICENSETERMS
    ```
 5. It checks the exit code, reboots if setup requests one (exit `3010`),
-   and verifies the instance with `sqlcmd -Q "SELECT @@VERSION;"`.
+   locates `sqlcmd.exe` (setup installs it under the ODBC Client SDK path
+   but never puts it on `PATH`), adds that folder to the machine `PATH`
+   permanently, and verifies the instance with
+   `sqlcmd -C -Q "SELECT @@VERSION;"` (`-C` trusts the instance's
+   self-signed cert, required since ODBC Driver 18+ defaults to
+   encrypted connections with strict cert validation).
 
 ## Prerequisites
 
@@ -76,10 +84,11 @@ Edit `ConfigurationFile.ini` if you need different:
 - `FEATURES` (defaults to `SQLENGINE,CONN,BC`).
 - `SQLSYSADMINACCOUNTS` — replace `BUILTIN\Administrators` with a
   specific admin account/group before using this anywhere but a lab.
-- Data/log/tempdb paths (defaults assume a `D:` data drive exists —
-  add a second virtio disk in `create-sql01-vm.sh` and format it as `D:`
-  in `phase3-sql01-unattended.ps1` if you want dedicated data disks
-  rather than everything on `C:`).
+- Data/log/tempdb paths default to `C:\SQLData\...` (Backup, Data, Log,
+  TempDB) since this VM has no separate data disk — fine for a lab.
+  If you want dedicated data disks instead of sharing the OS disk, add
+  a second virtio disk in `create-sql01-vm.sh`, format it as `D:` in
+  `phase3-sql01-unattended.ps1`, and point these paths at `D:\SQLData\...`.
 
 ## Running it
 
@@ -113,9 +122,23 @@ first login if this instance isn't purely a disposable lab VM.
 
 ## Verifying
 
+`phase3-sql01-unattended.ps1` adds `sqlcmd.exe`'s folder to the machine
+`PATH` as part of its own verification step, so from a **new** session
+(new RDP login, new console window) after provisioning finishes:
 ```powershell
 Get-Service MSSQLSERVER, SQLSERVERAGENT
-sqlcmd -S SQL01 -U sa -P '<password from sql01-sa-password.txt>' -Q "SELECT @@VERSION;"
+sqlcmd -S SQL01 -U sa -P '<password from sql01-sa-password.txt>' -C -Q "SELECT @@VERSION;"
+```
+The `-C` flag trusts the instance's self-signed certificate — required
+because ODBC Driver 18+ (which this version of `sqlcmd` uses) defaults
+to encrypted connections with strict certificate validation, and this
+instance has no CA-issued cert configured.
+
+If you're checking from the *same* session the script ran in (`PATH`
+changes only take effect in new sessions), find it manually instead:
+```powershell
+Get-ChildItem "C:\Program Files\Microsoft SQL Server" -Recurse -Filter sqlcmd.exe |
+    Select-Object -First 1 -ExpandProperty FullName
 ```
 
 ## Security notes

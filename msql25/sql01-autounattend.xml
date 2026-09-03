@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <unattend xmlns="urn:schemas-microsoft-com:unattend" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
   <settings pass="windowsPE">
     <component language="neutral" name="Microsoft-Windows-International-Core-WinPE" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" versionScope="nonSxS">
@@ -99,7 +99,7 @@
             <Metric>10</Metric>
             <RouterDiscoveryEnabled>false</RouterDiscoveryEnabled>
           </Ipv4Settings>
-          <Identifier>Ethernet Instance 0</Identifier>
+          <Identifier>Ethernet</Identifier>
           <UnicastIpAddresses>
             <IpAddress wcm:action="add" wcm:keyValue="1">10.0.6.70/24</IpAddress>
           </UnicastIpAddresses>
