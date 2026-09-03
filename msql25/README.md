@@ -140,6 +140,14 @@ changes only take effect in new sessions), find it manually instead:
 Get-ChildItem "C:\Program Files\Microsoft SQL Server" -Recurse -Filter sqlcmd.exe |
     Select-Object -First 1 -ExpandProperty FullName
 ```
+then call it by full path (this exact form is confirmed working
+against this build — the ODBC Client SDK folder version, `180` below,
+may differ on other installs):
+```powershell
+& "C:\Program Files\Microsoft SQL Server\Client SDK\ODBC\180\Tools\Binn\SQLCMD.EXE" `
+    -S localhost -U sa -P (Get-Content C:\ProvisionState\sql01-sa-password.txt -Raw) `
+    -C -Q "SELECT @@VERSION;"
+```
 
 ## Security notes
 
