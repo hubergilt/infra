@@ -7,13 +7,18 @@ unattended SQL Server 2025 (Enterprise Developer/Eval) install — with
 zero console interaction from start to finish.
 
 ```
-dcs/
+msql25/
 ├── README.md                        (this file)
 ├── create-sql01-vm.sh                # builds the ISO and launches the VM
 ├── sql01-autounattend.xml            # Windows Setup answer file (host: SQL01)
 ├── phase3-sql01-unattended.ps1       # guest-side: finds SQL media, installs, verifies
 └── ConfigurationFile.ini             # SQL Server setup.exe answer file
 ```
+
+This lives alongside `dcs/` (the `ad01`/domain-controller scripts) and
+`win19/` (Windows Server 2019 media + NetKVM drivers) at the repo root —
+`create-sql01-vm.sh` reaches into `../win19/NetKVM` the same way
+`dcs/create-ad01-vm.sh` does.
 
 ## How it works
 
@@ -79,7 +84,7 @@ Edit `ConfigurationFile.ini` if you need different:
 ## Running it
 
 ```bash
-cd dcs/
+cd msql25/
 ./create-sql01-vm.sh
 ```
 

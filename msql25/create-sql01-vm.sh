@@ -12,13 +12,15 @@
 # the Windows ISO — SQL media is large and doesn't need WinPE access),
 # and runs setup.exe /ConfigurationFile=ConfigurationFile.ini with zero
 # console interaction: OS install -> first boot -> locate SQL CD-ROM ->
-# unattended SQL Server install -> verify -> ready. See dcs/README.md
-# for how the chain works.
+# unattended SQL Server install -> verify -> ready. See msql25/README.md
+# for how the chain works. Lives alongside dcs/ (ad01/domain-controller
+# scripts) and win19/ (Windows Server 2019 media + NetKVM drivers) at
+# the repo root.
 #
 # Requirements: p7zip-full, genisoimage, qemu-utils, virtinst, ovmf
 #   apt install p7zip-full genisoimage qemu-utils virtinst ovmf
 #
-# Run from inside the dcs/ folder:
+# Run from inside the msql25/ folder:
 #   ./create-sql01-vm.sh
 
 set -e
@@ -59,9 +61,9 @@ done
 
 [ ! -f "$ORIG_ISO" ] && echo "ERROR: ISO not found: $ORIG_ISO" && exit 1
 [ ! -f "$SQL_ISO" ] && echo "ERROR: SQL Server ISO not found: $SQL_ISO" && exit 1
-[ ! -f "$ANSWER_FILE" ] && echo "ERROR: Answer file not found: $ANSWER_FILE (expected in dcs/)" && exit 1
+[ ! -f "$ANSWER_FILE" ] && echo "ERROR: Answer file not found: $ANSWER_FILE (expected in msql25/)" && exit 1
 [ ! -f "$PROVISION_SCRIPT" ] && echo "ERROR: Provisioning script not found: $PROVISION_SCRIPT" && exit 1
-[ ! -f "$SQL_CONFIG_FILE" ] && echo "ERROR: SQL ConfigurationFile.ini not found: $SQL_CONFIG_FILE (expected in dcs/)" && exit 1
+[ ! -f "$SQL_CONFIG_FILE" ] && echo "ERROR: SQL ConfigurationFile.ini not found: $SQL_CONFIG_FILE (expected in msql25/)" && exit 1
 
 # Check OVMF firmware is available for UEFI
 if [ ! -f /usr/share/OVMF/OVMF_CODE.fd ] && [ ! -f /usr/share/ovmf/OVMF.fd ]; then
