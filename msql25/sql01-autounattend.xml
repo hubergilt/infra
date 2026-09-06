@@ -114,10 +114,18 @@
         </Interface>
       </Interfaces>
     </component>
+    <!-- Identifier MUST match the TCPIP component's <Identifier> above
+         ("Ethernet") or the DNS server list silently never binds to the
+         real adapter — confirmed in practice on dhcp01-autounattend.xml:
+         the static IP/route from TCPIP applied fine, but the mismatched
+         DNS-Client identifier left no DNS server actually bound to the
+         NIC, which surfaces as domain-locator/SRV-lookup failures on
+         anything depending on this box's own DNS resolution (e.g. domain
+         join, if sql01 is ever joined to ad.lab). -->
     <component language="neutral" name="Microsoft-Windows-DNS-Client" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" versionScope="nonSxS">
       <Interfaces>
         <Interface wcm:action="add">
-          <Identifier>Ethernet Instance 0</Identifier>
+          <Identifier>Ethernet</Identifier>
           <DNSServerSearchOrder>
             <IpAddress wcm:action="add" wcm:keyValue="1">10.0.7.10</IpAddress>
             <IpAddress wcm:action="add" wcm:keyValue="2">10.0.7.11</IpAddress>
