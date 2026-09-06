@@ -47,9 +47,17 @@ function Register-ContinueTask {
     $action        = New-ScheduledTaskAction -Execute 'powershell.exe' `
         -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$scriptPath`""
     $startupTrigger = New-ScheduledTaskTrigger -AtStartup
+    # NOTE: [TimeSpan]::MaxValue serializes to "P99999999DT23H59M59S", which
+    # the Task Scheduler XML schema rejects with "The task XML contains a
+    # value which is incorrectly formatted or out of range." 9999 days is
+    # effectively indefinite for a lab VM and stays inside the valid range.
+    # Confirmed in practice: this crashed ad02's very first Stage 0 run
+    # before it ever reached Install-ADDSDomainController (see
+    # C:\ProvisionState\ad02-unattended.log) — same bug, same fix as
+    # dhcp01/phase3-dhcp01-unattended.ps1.
     $retryTrigger   = New-ScheduledTaskTrigger -Once -At (Get-Date) `
         -RepetitionInterval (New-TimeSpan -Minutes 2) `
-        -RepetitionDuration ([TimeSpan]::MaxValue)
+        -RepetitionDuration (New-TimeSpan -Days 9999)
     $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
     $settings  = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
         -StartWhenAvailable -MultipleInstances IgnoreNew
