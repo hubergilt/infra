@@ -7,7 +7,7 @@
 set -e
 
 VM_NAME="${1:-win11}"
-ORIG_ISO="/home/huber/Downloads/en-us_windows_11_consumer_editions_version_24h2_x64_dvd.iso"
+ORIG_ISO="/home/huber/Downloads/en-us_windows_11_consumer_editions_version_25h2_updated_aug_2026_x64_dvd_ec320f81.iso"
 ANSWER_FILE="$(pwd)/autounattend.xml"
 NEW_ISO="$(pwd)/${VM_NAME}-unattended.iso"
 WORK_DIR="/tmp/${VM_NAME}-iso-work"
