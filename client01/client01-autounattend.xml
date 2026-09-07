@@ -1,0 +1,274 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<unattend xmlns="urn:schemas-microsoft-com:unattend" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <!-- ───────────────────────────────────────────────────────────
+       client01-autounattend.xml
+       Forked from ../win11/autounattend.xml (the golden, already-working
+       Windows 11 template) the same way dcs/ad01-autounattend.xml forks
+       ../win19/autounattend.xml. Differences from the golden copy:
+         - ComputerName is baked in as CLIENT01
+         - Static IP is baked in as 10.0.4.10/24 on lab-clients (gateway
+           10.0.4.1 — fw01's client-facing leg, per general-nw.puml),
+           reserved out of dhcp01's own DHCP pool for this one named
+           workstation; everything else on that segment is expected to
+           get a dynamic lease instead
+         - DNS points at ad01/ad02 (10.0.7.10, 10.0.7.11) instead of
+           public resolvers, since client01 needs to resolve ad.lab to
+           join it — both ad01 and ad02 must already be up (see dcs/)
+         - FirstLogonCommands additionally stage the domain-join script
+           (Provision\phase3-client01-unattended.ps1) from the install
+           media onto C:\Provision and launch it once — everything else
+           (TPM/SecureBoot bypass, local "huber" admin account, RDP/SSH)
+           is unchanged from the golden template
+         - NOTE: the golden template already uses the SAME identifier
+           ("Ethernet Instance 0") for both the TCPIP and DNS-Client
+           components — unlike the Windows Server answer files in this
+           repo (dcs/, dhcp/, msql25/), which use "Ethernet" for TCPIP.
+           This is intentional, not a leftover bug to "fix" — Windows 11
+           apparently enumerates the interim adapter name differently
+           during specialize than Windows Server does, and this identifier
+           is what the already-working win11.qcow2 box uses. Do NOT change
+           this to "Ethernet" to match the Server scripts — that would
+           introduce the exact DNS-binding bug this repo already spent a
+           long troubleshooting session fixing elsewhere (see
+           dhcp01-autounattend.xml's own note on this).
+  ─────────────────────────────────────────────────────────────── -->
+  <settings pass="windowsPE">
+    <component language="neutral" name="Microsoft-Windows-International-Core-WinPE" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" versionScope="nonSxS">
+      <SetupUILanguage>
+        <UILanguage>en-US</UILanguage>
+      </SetupUILanguage>
+      <InputLocale>en-US</InputLocale>
+      <SystemLocale>en-US</SystemLocale>
+      <UILanguage>en-US</UILanguage>
+      <UserLocale>en-US</UserLocale>
+    </component>
+    <component language="neutral" name="Microsoft-Windows-PnpCustomizationsWinPE" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" versionScope="nonSxS">
+      <DriverPaths>
+        <PathAndCredentials wcm:action="add" wcm:keyValue="1">
+          <Path>D:\NetKVM</Path>
+        </PathAndCredentials>
+      </DriverPaths>
+    </component>
+    <component language="neutral" name="Microsoft-Windows-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" versionScope="nonSxS">
+      <!-- Bypass Win11 hardware requirement checks -->
+      <RunSynchronous>
+        <RunSynchronousCommand wcm:action="add">
+          <Order>1</Order>
+          <Path>reg add "HKLM\SYSTEM\Setup\LabConfig" /v BypassTPMCheck /t REG_DWORD /d 1 /f</Path>
+        </RunSynchronousCommand>
+        <RunSynchronousCommand wcm:action="add">
+          <Order>2</Order>
+          <Path>reg add "HKLM\SYSTEM\Setup\LabConfig" /v BypassSecureBootCheck /t REG_DWORD /d 1 /f</Path>
+        </RunSynchronousCommand>
+        <RunSynchronousCommand wcm:action="add">
+          <Order>3</Order>
+          <Path>reg add "HKLM\SYSTEM\Setup\LabConfig" /v BypassRAMCheck /t REG_DWORD /d 1 /f</Path>
+        </RunSynchronousCommand>
+        <RunSynchronousCommand wcm:action="add">
+          <Order>4</Order>
+          <Path>reg add "HKLM\SYSTEM\Setup\LabConfig" /v BypassCPUCheck /t REG_DWORD /d 1 /f</Path>
+        </RunSynchronousCommand>
+        <RunSynchronousCommand wcm:action="add">
+          <Order>5</Order>
+          <Path>reg add "HKLM\SYSTEM\Setup\LabConfig" /v BypassStorageCheck /t REG_DWORD /d 1 /f</Path>
+        </RunSynchronousCommand>
+      </RunSynchronous>
+      <DiskConfiguration>
+        <WillShowUI>Never</WillShowUI>
+        <Disk wcm:action="add">
+          <DiskID>0</DiskID>
+          <WillWipeDisk>true</WillWipeDisk>
+          <CreatePartitions>
+            <CreatePartition wcm:action="add">
+              <Order>1</Order>
+              <Size>500</Size>
+              <Type>EFI</Type>
+            </CreatePartition>
+            <CreatePartition wcm:action="add">
+              <Order>2</Order>
+              <Size>128</Size>
+              <Type>MSR</Type>
+            </CreatePartition>
+            <CreatePartition wcm:action="add">
+              <Order>3</Order>
+              <Extend>true</Extend>
+              <Type>Primary</Type>
+            </CreatePartition>
+          </CreatePartitions>
+          <ModifyPartitions>
+            <ModifyPartition wcm:action="add">
+              <Order>1</Order>
+              <PartitionID>1</PartitionID>
+              <Format>FAT32</Format>
+              <Label>System</Label>
+            </ModifyPartition>
+            <ModifyPartition wcm:action="add">
+              <Order>2</Order>
+              <PartitionID>2</PartitionID>
+            </ModifyPartition>
+            <ModifyPartition wcm:action="add">
+              <Order>3</Order>
+              <PartitionID>3</PartitionID>
+              <Format>NTFS</Format>
+              <Label>Windows</Label>
+              <Letter>C</Letter>
+            </ModifyPartition>
+          </ModifyPartitions>
+        </Disk>
+      </DiskConfiguration>
+      <ImageInstall>
+        <OSImage>
+          <InstallFrom>
+            <MetaData wcm:action="add">
+              <Key>/IMAGE/NAME</Key>
+              <Value>Windows 11 Pro</Value>
+            </MetaData>
+          </InstallFrom>
+          <InstallTo>
+            <DiskID>0</DiskID>
+            <PartitionID>3</PartitionID>
+          </InstallTo>
+          <WillShowUI>Never</WillShowUI>
+          <InstallToAvailablePartition>false</InstallToAvailablePartition>
+        </OSImage>
+      </ImageInstall>
+      <UserData>
+        <AcceptEula>true</AcceptEula>
+        <ProductKey>
+          <!-- Generic KMS key for Windows 11 Pro (volume activation) -->
+          <Key>W269N-WFGWX-YVC9B-4J6C9-T83GX</Key>
+          <WillShowUI>Never</WillShowUI>
+        </ProductKey>
+      </UserData>
+    </component>
+  </settings>
+  <settings pass="specialize">
+    <component language="neutral" name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" versionScope="nonSxS">
+      <ComputerName>CLIENT01</ComputerName>
+      <TimeZone>SA Pacific Standard Time</TimeZone>
+    </component>
+    <!-- lab-clients network: 10.0.4.0/24, gateway 10.0.4.1 (fw01) -->
+    <component language="neutral" name="Microsoft-Windows-TCPIP" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" versionScope="nonSxS">
+      <Interfaces>
+        <Interface wcm:action="add">
+          <Ipv4Settings>
+            <DhcpEnabled>false</DhcpEnabled>
+            <Metric>10</Metric>
+            <RouterDiscoveryEnabled>false</RouterDiscoveryEnabled>
+          </Ipv4Settings>
+          <Identifier>Ethernet Instance 0</Identifier>
+          <UnicastIpAddresses>
+            <IpAddress wcm:action="add" wcm:keyValue="1">10.0.4.10/24</IpAddress>
+          </UnicastIpAddresses>
+          <Routes>
+            <Route wcm:action="add">
+              <Identifier>1</Identifier>
+              <Metric>10</Metric>
+              <NextHopAddress>10.0.4.1</NextHopAddress>
+              <Prefix>0.0.0.0/0</Prefix>
+            </Route>
+          </Routes>
+        </Interface>
+      </Interfaces>
+    </component>
+    <!-- Identifier matches the TCPIP component above ("Ethernet Instance
+         0") — see the note at the top of this file on why this must NOT
+         be changed to plain "Ethernet" for a Windows 11 guest. -->
+    <component language="neutral" name="Microsoft-Windows-DNS-Client" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" versionScope="nonSxS">
+      <Interfaces>
+        <Interface wcm:action="add">
+          <Identifier>Ethernet Instance 0</Identifier>
+          <DNSServerSearchOrder>
+            <IpAddress wcm:action="add" wcm:keyValue="1">10.0.7.10</IpAddress>
+            <IpAddress wcm:action="add" wcm:keyValue="2">10.0.7.11</IpAddress>
+          </DNSServerSearchOrder>
+          <EnableAdapterDomainNameRegistration>false</EnableAdapterDomainNameRegistration>
+        </Interface>
+      </Interfaces>
+    </component>
+    <component language="neutral" name="Microsoft-Windows-TerminalServices-LocalSessionManager" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" versionScope="nonSxS">
+      <fDenyTSConnections>false</fDenyTSConnections>
+    </component>
+  </settings>
+  <settings pass="oobeSystem">
+    <component language="neutral" name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" versionScope="nonSxS">
+      <OOBE>
+        <HideEULAPage>true</HideEULAPage>
+        <HideLocalAccountScreen>true</HideLocalAccountScreen>
+        <HideOnlineAccountScreens>true</HideOnlineAccountScreens>
+        <HideWirelessSetupInOOBE>true</HideWirelessSetupInOOBE>
+        <NetworkLocation>Work</NetworkLocation>
+        <ProtectYourPC>1</ProtectYourPC>
+        <SkipMachineOOBE>true</SkipMachineOOBE>
+        <SkipUserOOBE>true</SkipUserOOBE>
+      </OOBE>
+      <UserAccounts>
+        <AdministratorPassword>
+          <Value>Server2012!</Value>
+          <PlainText>true</PlainText>
+        </AdministratorPassword>
+        <LocalAccounts>
+          <LocalAccount wcm:action="add">
+            <Name>huber</Name>
+            <Group>Administrators</Group>
+            <Password>
+              <Value>huber</Value>
+              <PlainText>true</PlainText>
+            </Password>
+          </LocalAccount>
+        </LocalAccounts>
+      </UserAccounts>
+      <AutoLogon>
+        <Password>
+          <Value>Server2012!</Value>
+          <PlainText>true</PlainText>
+        </Password>
+        <Username>Administrator</Username>
+        <Enabled>true</Enabled>
+        <LogonCount>1</LogonCount>
+      </AutoLogon>
+      <FirstLogonCommands>
+        <SynchronousCommand wcm:action="add">
+          <Order>1</Order>
+          <CommandLine>reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Setup\OOBE" /v SetupDisplayedProductKey /t REG_DWORD /d 1 /f</CommandLine>
+          <Description>Disable product key prompt</Description>
+        </SynchronousCommand>
+        <SynchronousCommand wcm:action="add">
+          <Order>2</Order>
+          <CommandLine>netsh advfirewall firewall set rule group="remote desktop" new enable=Yes</CommandLine>
+          <Description>Enable RDP firewall rule</Description>
+        </SynchronousCommand>
+        <SynchronousCommand wcm:action="add">
+          <Order>3</Order>
+          <CommandLine>net user huber /passwordreq:yes /expires:never</CommandLine>
+          <Description>Password never expires</Description>
+        </SynchronousCommand>
+        <SynchronousCommand wcm:action="add">
+          <Order>4</Order>
+          <CommandLine>powershell.exe -NonInteractive -ExecutionPolicy Bypass -Command "Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0"</CommandLine>
+          <Description>Install OpenSSH Server</Description>
+        </SynchronousCommand>
+        <SynchronousCommand wcm:action="add">
+          <Order>5</Order>
+          <CommandLine>powershell.exe -NonInteractive -ExecutionPolicy Bypass -Command "Start-Service sshd; Set-Service -Name sshd -StartupType Automatic"</CommandLine>
+          <Description>Enable and start sshd</Description>
+        </SynchronousCommand>
+        <SynchronousCommand wcm:action="add">
+          <Order>6</Order>
+          <CommandLine>powershell.exe -NonInteractive -ExecutionPolicy Bypass -Command "New-NetFirewallRule -Name OpenSSH-In -DisplayName 'OpenSSH Server' -Enabled True -Direction Inbound -Protocol TCP -Action Allow -LocalPort 22"</CommandLine>
+          <Description>Firewall rule for SSH port 22</Description>
+        </SynchronousCommand>
+        <SynchronousCommand wcm:action="add">
+          <Order>7</Order>
+          <CommandLine>cmd.exe /c if not exist C:\Provision mkdir C:\Provision &amp; copy /Y D:\Provision\phase3-client01-unattended.ps1 C:\Provision\phase3-client01-unattended.ps1</CommandLine>
+          <Description>Stage domain-join script from install media to C:\Provision</Description>
+        </SynchronousCommand>
+        <SynchronousCommand wcm:action="add">
+          <Order>8</Order>
+          <CommandLine>powershell.exe -NonInteractive -ExecutionPolicy Bypass -File "C:\Provision\phase3-client01-unattended.ps1"</CommandLine>
+          <Description>Bootstrap unattended domain join (client01)</Description>
+        </SynchronousCommand>
+      </FirstLogonCommands>
+    </component>
+  </settings>
+</unattend>
