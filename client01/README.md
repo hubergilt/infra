@@ -51,6 +51,30 @@ log into the guest at any point.
 - **`dcs/` Phase 3 complete** — ad01 and ad02 promoted and replicating.
   client01 resolves and joins `ad.lab` directly against them.
 - The `lab-clients` libvirt network already defined (see `../nets/`).
+- **fw01 (OPNsense) permits more than just AD auth between CLIENTS and
+  IDENTITY.** The `ADPorts` alias (53/88/389/445/636/3268/3269 — DNS,
+  Kerberos, LDAP, SMB, LDAPS, GC) covers the join itself, but a
+  domain-joined *workstation* needs more than that on an ongoing basis.
+  Confirmed missing and required the hard way, in this order:
+  - **NTP (123, UDP)** — without it the machine never syncs off its local
+    CMOS clock, which doesn't block the join but silently breaks anything
+    Kerberos-dependent afterward (this specifically manifested as every
+    SSH connection resetting instantly, local or remote, with no
+    obvious link to time at first).
+  - **RPC Endpoint Mapper (135) + a dynamic RPC port range
+    (e.g. 49152-65535)** — needed for background GPO/RPC traffic to the
+    DCs; without it, expect intermittent hangs/resets on operations that
+    don't look RPC-related on the surface.
+
+  Add both to the `ADPorts` alias's content (Firewall → Aliases →
+  `ADPorts`) rather than opening a separate rule — the existing
+  `Clients→IDENTITY AD auth` rule already targets that alias, so editing
+  its content is enough; no rule changes needed. Opening the full dynamic
+  RPC range is the pragmatic fix, not the tightest one — the
+  belt-and-suspenders alternative is fixed RPC ports on ad01/ad02 for
+  Netlogon (and NTDS/DFSR if relevant) plus just 135, which avoids
+  opening the full ephemeral range across the segment boundary at the
+  cost of extra DC-side configuration.
 - On the libvirt host:
   ```bash
   apt install p7zip-full genisoimage qemu-utils virtinst ovmf
@@ -98,7 +122,8 @@ Edit the "site-specific settings" block at the top of
    itself across that reboot — and retries every 2 minutes if ad01 isn't
    reachable yet — so no manual intervention or rerun is needed either way.
 5. **Stage 1**, resumed automatically after the reboot, verifies domain
-   membership and logs success. The scheduled task then deletes itself.
+   membership, forces a time sync onto the domain hierarchy (`w32tm`), and
+   logs success. The scheduled task then deletes itself.
 
 Unlike `dcs/` and `dhcp/`, this script never needs the CredSSP/double-hop
 workaround those two required — `Add-Computer` takes a `-Credential`

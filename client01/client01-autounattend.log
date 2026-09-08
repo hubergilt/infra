@@ -1,0 +1,1029 @@
+**********************
+Windows PowerShell transcript start
+Start time: 20260907184117
+Username: CLIENT01\Administrator
+RunAs User: CLIENT01\Administrator
+Configuration Name: 
+Machine: CLIENT01 (Microsoft Windows NT 10.0.26200.0)
+Host Application: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -NonInteractive -ExecutionPolicy Bypass -File C:\Provision\phase3-client01-unattended.ps1
+Process ID: 8556
+PSVersion: 5.1.26100.9168
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.9168
+BuildVersion: 10.0.26100.9168
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== client01 unattended provisioning — resuming at stage 0 ===
+[Stage 0] Checking connectivity to ad01 (10.0.7.10)...
+     ad01 not ready yet — will retry automatically in 2 minutes.
+**********************
+Windows PowerShell transcript end
+End time: 20260907184128
+**********************
+**********************
+Windows PowerShell transcript start
+Start time: 20260907184326
+Username: WORKGROUP\SYSTEM
+RunAs User: WORKGROUP\SYSTEM
+Configuration Name: 
+Machine: CLIENT01 (Microsoft Windows NT 10.0.26200.0)
+Host Application: powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\Provision\phase3-client01-unattended.ps1
+Process ID: 6856
+PSVersion: 5.1.26100.9168
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.9168
+BuildVersion: 10.0.26100.9168
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== client01 unattended provisioning — resuming at stage 0 ===
+[Stage 0] Checking connectivity to ad01 (10.0.7.10)...
+     ad01 not ready yet — will retry automatically in 2 minutes.
+**********************
+Windows PowerShell transcript end
+End time: 20260907184337
+**********************
+**********************
+Windows PowerShell transcript start
+Start time: 20260907184531
+Username: WORKGROUP\SYSTEM
+RunAs User: WORKGROUP\SYSTEM
+Configuration Name: 
+Machine: CLIENT01 (Microsoft Windows NT 10.0.26200.0)
+Host Application: powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\Provision\phase3-client01-unattended.ps1
+Process ID: 8480
+PSVersion: 5.1.26100.9168
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.9168
+BuildVersion: 10.0.26100.9168
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== client01 unattended provisioning — resuming at stage 0 ===
+[Stage 0] Checking connectivity to ad01 (10.0.7.10)...
+     ad01 not ready yet — will retry automatically in 2 minutes.
+**********************
+Windows PowerShell transcript end
+End time: 20260907184541
+**********************
+**********************
+Windows PowerShell transcript start
+Start time: 20260907184734
+Username: WORKGROUP\SYSTEM
+RunAs User: WORKGROUP\SYSTEM
+Configuration Name: 
+Machine: CLIENT01 (Microsoft Windows NT 10.0.26200.0)
+Host Application: powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\Provision\phase3-client01-unattended.ps1
+Process ID: 7952
+PSVersion: 5.1.26100.9168
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.9168
+BuildVersion: 10.0.26100.9168
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== client01 unattended provisioning — resuming at stage 0 ===
+[Stage 0] Checking connectivity to ad01 (10.0.7.10)...
+     ad01 not ready yet — will retry automatically in 2 minutes.
+**********************
+Windows PowerShell transcript end
+End time: 20260907184744
+**********************
+**********************
+Windows PowerShell transcript start
+Start time: 20260907184938
+Username: WORKGROUP\SYSTEM
+RunAs User: WORKGROUP\SYSTEM
+Configuration Name: 
+Machine: CLIENT01 (Microsoft Windows NT 10.0.26200.0)
+Host Application: powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\Provision\phase3-client01-unattended.ps1
+Process ID: 5384
+PSVersion: 5.1.26100.9168
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.9168
+BuildVersion: 10.0.26100.9168
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== client01 unattended provisioning — resuming at stage 0 ===
+[Stage 0] Checking connectivity to ad01 (10.0.7.10)...
+     ad01 not ready yet — will retry automatically in 2 minutes.
+**********************
+Windows PowerShell transcript end
+End time: 20260907184948
+**********************
+**********************
+Windows PowerShell transcript start
+Start time: 20260907185140
+Username: WORKGROUP\SYSTEM
+RunAs User: WORKGROUP\SYSTEM
+Configuration Name: 
+Machine: CLIENT01 (Microsoft Windows NT 10.0.26200.0)
+Host Application: powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\Provision\phase3-client01-unattended.ps1
+Process ID: 4700
+PSVersion: 5.1.26100.9168
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.9168
+BuildVersion: 10.0.26100.9168
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== client01 unattended provisioning — resuming at stage 0 ===
+[Stage 0] Checking connectivity to ad01 (10.0.7.10)...
+     ad01 not ready yet — will retry automatically in 2 minutes.
+**********************
+Windows PowerShell transcript end
+End time: 20260907185150
+**********************
+**********************
+Windows PowerShell transcript start
+Start time: 20260907185343
+Username: WORKGROUP\SYSTEM
+RunAs User: WORKGROUP\SYSTEM
+Configuration Name: 
+Machine: CLIENT01 (Microsoft Windows NT 10.0.26200.0)
+Host Application: powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\Provision\phase3-client01-unattended.ps1
+Process ID: 7964
+PSVersion: 5.1.26100.9168
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.9168
+BuildVersion: 10.0.26100.9168
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== client01 unattended provisioning — resuming at stage 0 ===
+[Stage 0] Checking connectivity to ad01 (10.0.7.10)...
+     ad01 not ready yet — will retry automatically in 2 minutes.
+**********************
+Windows PowerShell transcript end
+End time: 20260907185353
+**********************
+**********************
+Windows PowerShell transcript start
+Start time: 20260907185546
+Username: WORKGROUP\SYSTEM
+RunAs User: WORKGROUP\SYSTEM
+Configuration Name: 
+Machine: CLIENT01 (Microsoft Windows NT 10.0.26200.0)
+Host Application: powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\Provision\phase3-client01-unattended.ps1
+Process ID: 3988
+PSVersion: 5.1.26100.9168
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.9168
+BuildVersion: 10.0.26100.9168
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== client01 unattended provisioning — resuming at stage 0 ===
+[Stage 0] Checking connectivity to ad01 (10.0.7.10)...
+     ad01 not ready yet — will retry automatically in 2 minutes.
+**********************
+Windows PowerShell transcript end
+End time: 20260907185555
+**********************
+**********************
+Windows PowerShell transcript start
+Start time: 20260907185748
+Username: WORKGROUP\SYSTEM
+RunAs User: WORKGROUP\SYSTEM
+Configuration Name: 
+Machine: CLIENT01 (Microsoft Windows NT 10.0.26200.0)
+Host Application: powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\Provision\phase3-client01-unattended.ps1
+Process ID: 1204
+PSVersion: 5.1.26100.9168
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.9168
+BuildVersion: 10.0.26100.9168
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== client01 unattended provisioning — resuming at stage 0 ===
+[Stage 0] Checking connectivity to ad01 (10.0.7.10)...
+     ad01 not ready yet — will retry automatically in 2 minutes.
+**********************
+Windows PowerShell transcript end
+End time: 20260907185758
+**********************
+**********************
+Windows PowerShell transcript start
+Start time: 20260907185951
+Username: WORKGROUP\SYSTEM
+RunAs User: WORKGROUP\SYSTEM
+Configuration Name: 
+Machine: CLIENT01 (Microsoft Windows NT 10.0.26200.0)
+Host Application: powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\Provision\phase3-client01-unattended.ps1
+Process ID: 8196
+PSVersion: 5.1.26100.9168
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.9168
+BuildVersion: 10.0.26100.9168
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== client01 unattended provisioning — resuming at stage 0 ===
+[Stage 0] Checking connectivity to ad01 (10.0.7.10)...
+     ad01 not ready yet — will retry automatically in 2 minutes.
+**********************
+Windows PowerShell transcript end
+End time: 20260907190000
+**********************
+**********************
+Windows PowerShell transcript start
+Start time: 20260907190153
+Username: WORKGROUP\SYSTEM
+RunAs User: WORKGROUP\SYSTEM
+Configuration Name: 
+Machine: CLIENT01 (Microsoft Windows NT 10.0.26200.0)
+Host Application: powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\Provision\phase3-client01-unattended.ps1
+Process ID: 9472
+PSVersion: 5.1.26100.9168
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.9168
+BuildVersion: 10.0.26100.9168
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== client01 unattended provisioning — resuming at stage 0 ===
+[Stage 0] Checking connectivity to ad01 (10.0.7.10)...
+     ad01 not ready yet — will retry automatically in 2 minutes.
+**********************
+Windows PowerShell transcript end
+End time: 20260907190203
+**********************
+**********************
+Windows PowerShell transcript start
+Start time: 20260907190355
+Username: WORKGROUP\SYSTEM
+RunAs User: WORKGROUP\SYSTEM
+Configuration Name: 
+Machine: CLIENT01 (Microsoft Windows NT 10.0.26200.0)
+Host Application: powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\Provision\phase3-client01-unattended.ps1
+Process ID: 4444
+PSVersion: 5.1.26100.9168
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.9168
+BuildVersion: 10.0.26100.9168
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== client01 unattended provisioning — resuming at stage 0 ===
+[Stage 0] Checking connectivity to ad01 (10.0.7.10)...
+     ad01 not ready yet — will retry automatically in 2 minutes.
+**********************
+Windows PowerShell transcript end
+End time: 20260907190405
+**********************
+**********************
+Windows PowerShell transcript start
+Start time: 20260907190558
+Username: WORKGROUP\SYSTEM
+RunAs User: WORKGROUP\SYSTEM
+Configuration Name: 
+Machine: CLIENT01 (Microsoft Windows NT 10.0.26200.0)
+Host Application: powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\Provision\phase3-client01-unattended.ps1
+Process ID: 4844
+PSVersion: 5.1.26100.9168
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.9168
+BuildVersion: 10.0.26100.9168
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== client01 unattended provisioning — resuming at stage 0 ===
+[Stage 0] Checking connectivity to ad01 (10.0.7.10)...
+     ad01 not ready yet — will retry automatically in 2 minutes.
+**********************
+Windows PowerShell transcript end
+End time: 20260907190608
+**********************
+**********************
+Windows PowerShell transcript start
+Start time: 20260907190800
+Username: WORKGROUP\SYSTEM
+RunAs User: WORKGROUP\SYSTEM
+Configuration Name: 
+Machine: CLIENT01 (Microsoft Windows NT 10.0.26200.0)
+Host Application: powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\Provision\phase3-client01-unattended.ps1
+Process ID: 992
+PSVersion: 5.1.26100.9168
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.9168
+BuildVersion: 10.0.26100.9168
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== client01 unattended provisioning — resuming at stage 0 ===
+[Stage 0] Checking connectivity to ad01 (10.0.7.10)...
+     ad01 not ready yet — will retry automatically in 2 minutes.
+**********************
+Windows PowerShell transcript end
+End time: 20260907190810
+**********************
+**********************
+Windows PowerShell transcript start
+Start time: 20260907191003
+Username: WORKGROUP\SYSTEM
+RunAs User: WORKGROUP\SYSTEM
+Configuration Name: 
+Machine: CLIENT01 (Microsoft Windows NT 10.0.26200.0)
+Host Application: powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\Provision\phase3-client01-unattended.ps1
+Process ID: 8932
+PSVersion: 5.1.26100.9168
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.9168
+BuildVersion: 10.0.26100.9168
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== client01 unattended provisioning — resuming at stage 0 ===
+[Stage 0] Checking connectivity to ad01 (10.0.7.10)...
+     ad01 not ready yet — will retry automatically in 2 minutes.
+**********************
+Windows PowerShell transcript end
+End time: 20260907191012
+**********************
+**********************
+Windows PowerShell transcript start
+Start time: 20260907191205
+Username: WORKGROUP\SYSTEM
+RunAs User: WORKGROUP\SYSTEM
+Configuration Name: 
+Machine: CLIENT01 (Microsoft Windows NT 10.0.26200.0)
+Host Application: powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\Provision\phase3-client01-unattended.ps1
+Process ID: 2776
+PSVersion: 5.1.26100.9168
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.9168
+BuildVersion: 10.0.26100.9168
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== client01 unattended provisioning — resuming at stage 0 ===
+[Stage 0] Checking connectivity to ad01 (10.0.7.10)...
+     ad01 not ready yet — will retry automatically in 2 minutes.
+**********************
+Windows PowerShell transcript end
+End time: 20260907191215
+**********************
+**********************
+Windows PowerShell transcript start
+Start time: 20260907191407
+Username: WORKGROUP\SYSTEM
+RunAs User: WORKGROUP\SYSTEM
+Configuration Name: 
+Machine: CLIENT01 (Microsoft Windows NT 10.0.26200.0)
+Host Application: powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\Provision\phase3-client01-unattended.ps1
+Process ID: 6016
+PSVersion: 5.1.26100.9168
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.9168
+BuildVersion: 10.0.26100.9168
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== client01 unattended provisioning — resuming at stage 0 ===
+[Stage 0] Checking connectivity to ad01 (10.0.7.10)...
+     ad01 not ready yet — will retry automatically in 2 minutes.
+**********************
+Windows PowerShell transcript end
+End time: 20260907191417
+**********************
+**********************
+Windows PowerShell transcript start
+Start time: 20260907191610
+Username: WORKGROUP\SYSTEM
+RunAs User: WORKGROUP\SYSTEM
+Configuration Name: 
+Machine: CLIENT01 (Microsoft Windows NT 10.0.26200.0)
+Host Application: powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\Provision\phase3-client01-unattended.ps1
+Process ID: 6540
+PSVersion: 5.1.26100.9168
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.9168
+BuildVersion: 10.0.26100.9168
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== client01 unattended provisioning — resuming at stage 0 ===
+[Stage 0] Checking connectivity to ad01 (10.0.7.10)...
+     ad01 not ready yet — will retry automatically in 2 minutes.
+**********************
+Windows PowerShell transcript end
+End time: 20260907191619
+**********************
+**********************
+Windows PowerShell transcript start
+Start time: 20260907191812
+Username: WORKGROUP\SYSTEM
+RunAs User: WORKGROUP\SYSTEM
+Configuration Name: 
+Machine: CLIENT01 (Microsoft Windows NT 10.0.26200.0)
+Host Application: powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\Provision\phase3-client01-unattended.ps1
+Process ID: 4724
+PSVersion: 5.1.26100.9168
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.9168
+BuildVersion: 10.0.26100.9168
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== client01 unattended provisioning — resuming at stage 0 ===
+[Stage 0] Checking connectivity to ad01 (10.0.7.10)...
+     ad01 not ready yet — will retry automatically in 2 minutes.
+**********************
+Windows PowerShell transcript end
+End time: 20260907191821
+**********************
+**********************
+Windows PowerShell transcript start
+Start time: 20260907192014
+Username: WORKGROUP\SYSTEM
+RunAs User: WORKGROUP\SYSTEM
+Configuration Name: 
+Machine: CLIENT01 (Microsoft Windows NT 10.0.26200.0)
+Host Application: powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\Provision\phase3-client01-unattended.ps1
+Process ID: 10036
+PSVersion: 5.1.26100.9168
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.9168
+BuildVersion: 10.0.26100.9168
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== client01 unattended provisioning — resuming at stage 0 ===
+[Stage 0] Checking connectivity to ad01 (10.0.7.10)...
+     ad01 not ready yet — will retry automatically in 2 minutes.
+**********************
+Windows PowerShell transcript end
+End time: 20260907192024
+**********************
+**********************
+Windows PowerShell transcript start
+Start time: 20260907192216
+Username: WORKGROUP\SYSTEM
+RunAs User: WORKGROUP\SYSTEM
+Configuration Name: 
+Machine: CLIENT01 (Microsoft Windows NT 10.0.26200.0)
+Host Application: powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\Provision\phase3-client01-unattended.ps1
+Process ID: 5788
+PSVersion: 5.1.26100.9168
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.9168
+BuildVersion: 10.0.26100.9168
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== client01 unattended provisioning — resuming at stage 0 ===
+[Stage 0] Checking connectivity to ad01 (10.0.7.10)...
+     ad01 not ready yet — will retry automatically in 2 minutes.
+**********************
+Windows PowerShell transcript end
+End time: 20260907192226
+**********************
+**********************
+Windows PowerShell transcript start
+Start time: 20260907192419
+Username: WORKGROUP\SYSTEM
+RunAs User: WORKGROUP\SYSTEM
+Configuration Name: 
+Machine: CLIENT01 (Microsoft Windows NT 10.0.26200.0)
+Host Application: powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\Provision\phase3-client01-unattended.ps1
+Process ID: 8504
+PSVersion: 5.1.26100.9168
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.9168
+BuildVersion: 10.0.26100.9168
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== client01 unattended provisioning — resuming at stage 0 ===
+[Stage 0] Checking connectivity to ad01 (10.0.7.10)...
+     ad01 not ready yet — will retry automatically in 2 minutes.
+**********************
+Windows PowerShell transcript end
+End time: 20260907192428
+**********************
+**********************
+Windows PowerShell transcript start
+Start time: 20260907192621
+Username: WORKGROUP\SYSTEM
+RunAs User: WORKGROUP\SYSTEM
+Configuration Name: 
+Machine: CLIENT01 (Microsoft Windows NT 10.0.26200.0)
+Host Application: powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\Provision\phase3-client01-unattended.ps1
+Process ID: 9660
+PSVersion: 5.1.26100.9168
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.9168
+BuildVersion: 10.0.26100.9168
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== client01 unattended provisioning — resuming at stage 0 ===
+[Stage 0] Checking connectivity to ad01 (10.0.7.10)...
+     ad01 not ready yet — will retry automatically in 2 minutes.
+**********************
+Windows PowerShell transcript end
+End time: 20260907192631
+**********************
+**********************
+Windows PowerShell transcript start
+Start time: 20260907192824
+Username: WORKGROUP\SYSTEM
+RunAs User: WORKGROUP\SYSTEM
+Configuration Name: 
+Machine: CLIENT01 (Microsoft Windows NT 10.0.26200.0)
+Host Application: powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\Provision\phase3-client01-unattended.ps1
+Process ID: 8024
+PSVersion: 5.1.26100.9168
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.9168
+BuildVersion: 10.0.26100.9168
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== client01 unattended provisioning — resuming at stage 0 ===
+[Stage 0] Checking connectivity to ad01 (10.0.7.10)...
+     ad01 not ready yet — will retry automatically in 2 minutes.
+**********************
+Windows PowerShell transcript end
+End time: 20260907192833
+**********************
+**********************
+Windows PowerShell transcript start
+Start time: 20260907193026
+Username: WORKGROUP\SYSTEM
+RunAs User: WORKGROUP\SYSTEM
+Configuration Name: 
+Machine: CLIENT01 (Microsoft Windows NT 10.0.26200.0)
+Host Application: powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\Provision\phase3-client01-unattended.ps1
+Process ID: 8832
+PSVersion: 5.1.26100.9168
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.9168
+BuildVersion: 10.0.26100.9168
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== client01 unattended provisioning — resuming at stage 0 ===
+[Stage 0] Checking connectivity to ad01 (10.0.7.10)...
+     ad01 not ready yet — will retry automatically in 2 minutes.
+**********************
+Windows PowerShell transcript end
+End time: 20260907193036
+**********************
+**********************
+Windows PowerShell transcript start
+Start time: 20260907193228
+Username: WORKGROUP\SYSTEM
+RunAs User: WORKGROUP\SYSTEM
+Configuration Name: 
+Machine: CLIENT01 (Microsoft Windows NT 10.0.26200.0)
+Host Application: powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\Provision\phase3-client01-unattended.ps1
+Process ID: 2092
+PSVersion: 5.1.26100.9168
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.9168
+BuildVersion: 10.0.26100.9168
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== client01 unattended provisioning — resuming at stage 0 ===
+[Stage 0] Checking connectivity to ad01 (10.0.7.10)...
+     ad01 not ready yet — will retry automatically in 2 minutes.
+**********************
+Windows PowerShell transcript end
+End time: 20260907193238
+**********************
+**********************
+Windows PowerShell transcript start
+Start time: 20260907193429
+Username: WORKGROUP\SYSTEM
+RunAs User: WORKGROUP\SYSTEM
+Configuration Name: 
+Machine: CLIENT01 (Microsoft Windows NT 10.0.26200.0)
+Host Application: powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\Provision\phase3-client01-unattended.ps1
+Process ID: 8964
+PSVersion: 5.1.26100.9168
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.9168
+BuildVersion: 10.0.26100.9168
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== client01 unattended provisioning — resuming at stage 0 ===
+[Stage 0] Checking connectivity to ad01 (10.0.7.10)...
+     ad01 not ready yet — will retry automatically in 2 minutes.
+**********************
+Windows PowerShell transcript end
+End time: 20260907193439
+**********************
+**********************
+Windows PowerShell transcript start
+Start time: 20260907193632
+Username: WORKGROUP\SYSTEM
+RunAs User: WORKGROUP\SYSTEM
+Configuration Name: 
+Machine: CLIENT01 (Microsoft Windows NT 10.0.26200.0)
+Host Application: powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\Provision\phase3-client01-unattended.ps1
+Process ID: 2744
+PSVersion: 5.1.26100.9168
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.9168
+BuildVersion: 10.0.26100.9168
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== client01 unattended provisioning — resuming at stage 0 ===
+[Stage 0] Checking connectivity to ad01 (10.0.7.10)...
+     ad01 not ready yet — will retry automatically in 2 minutes.
+**********************
+Windows PowerShell transcript end
+End time: 20260907193641
+**********************
+**********************
+Windows PowerShell transcript start
+Start time: 20260907193834
+Username: WORKGROUP\SYSTEM
+RunAs User: WORKGROUP\SYSTEM
+Configuration Name: 
+Machine: CLIENT01 (Microsoft Windows NT 10.0.26200.0)
+Host Application: powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\Provision\phase3-client01-unattended.ps1
+Process ID: 11188
+PSVersion: 5.1.26100.9168
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.9168
+BuildVersion: 10.0.26100.9168
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== client01 unattended provisioning — resuming at stage 0 ===
+[Stage 0] Checking connectivity to ad01 (10.0.7.10)...
+     ad01 not ready yet — will retry automatically in 2 minutes.
+**********************
+Windows PowerShell transcript end
+End time: 20260907193844
+**********************
+**********************
+Windows PowerShell transcript start
+Start time: 20260907194036
+Username: WORKGROUP\SYSTEM
+RunAs User: WORKGROUP\SYSTEM
+Configuration Name: 
+Machine: CLIENT01 (Microsoft Windows NT 10.0.26200.0)
+Host Application: powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\Provision\phase3-client01-unattended.ps1
+Process ID: 1692
+PSVersion: 5.1.26100.9168
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.9168
+BuildVersion: 10.0.26100.9168
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== client01 unattended provisioning — resuming at stage 0 ===
+[Stage 0] Checking connectivity to ad01 (10.0.7.10)...
+     ad01 not ready yet — will retry automatically in 2 minutes.
+**********************
+Windows PowerShell transcript end
+End time: 20260907194046
+**********************
+**********************
+Windows PowerShell transcript start
+Start time: 20260907194238
+Username: WORKGROUP\SYSTEM
+RunAs User: WORKGROUP\SYSTEM
+Configuration Name: 
+Machine: CLIENT01 (Microsoft Windows NT 10.0.26200.0)
+Host Application: powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\Provision\phase3-client01-unattended.ps1
+Process ID: 3376
+PSVersion: 5.1.26100.9168
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.9168
+BuildVersion: 10.0.26100.9168
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== client01 unattended provisioning — resuming at stage 0 ===
+[Stage 0] Checking connectivity to ad01 (10.0.7.10)...
+     ad01 not ready yet — will retry automatically in 2 minutes.
+**********************
+Windows PowerShell transcript end
+End time: 20260907194248
+**********************
+**********************
+Windows PowerShell transcript start
+Start time: 20260907194440
+Username: WORKGROUP\SYSTEM
+RunAs User: WORKGROUP\SYSTEM
+Configuration Name: 
+Machine: CLIENT01 (Microsoft Windows NT 10.0.26200.0)
+Host Application: powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\Provision\phase3-client01-unattended.ps1
+Process ID: 11132
+PSVersion: 5.1.26100.9168
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.9168
+BuildVersion: 10.0.26100.9168
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== client01 unattended provisioning — resuming at stage 0 ===
+[Stage 0] Checking connectivity to ad01 (10.0.7.10)...
+     ad01 not ready yet — will retry automatically in 2 minutes.
+**********************
+Windows PowerShell transcript end
+End time: 20260907194450
+**********************
+**********************
+Windows PowerShell transcript start
+Start time: 20260907194643
+Username: WORKGROUP\SYSTEM
+RunAs User: WORKGROUP\SYSTEM
+Configuration Name: 
+Machine: CLIENT01 (Microsoft Windows NT 10.0.26200.0)
+Host Application: powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\Provision\phase3-client01-unattended.ps1
+Process ID: 10844
+PSVersion: 5.1.26100.9168
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.9168
+BuildVersion: 10.0.26100.9168
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== client01 unattended provisioning — resuming at stage 0 ===
+[Stage 0] Checking connectivity to ad01 (10.0.7.10)...
+     ad01 not ready yet — will retry automatically in 2 minutes.
+**********************
+Windows PowerShell transcript end
+End time: 20260907194652
+**********************
+**********************
+Windows PowerShell transcript start
+Start time: 20260907194845
+Username: WORKGROUP\SYSTEM
+RunAs User: WORKGROUP\SYSTEM
+Configuration Name: 
+Machine: CLIENT01 (Microsoft Windows NT 10.0.26200.0)
+Host Application: powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\Provision\phase3-client01-unattended.ps1
+Process ID: 11140
+PSVersion: 5.1.26100.9168
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.9168
+BuildVersion: 10.0.26100.9168
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== client01 unattended provisioning — resuming at stage 0 ===
+[Stage 0] Checking connectivity to ad01 (10.0.7.10)...
+     ad01 not ready yet — will retry automatically in 2 minutes.
+**********************
+Windows PowerShell transcript end
+End time: 20260907194855
+**********************
+**********************
+Windows PowerShell transcript start
+Start time: 20260907195048
+Username: WORKGROUP\SYSTEM
+RunAs User: WORKGROUP\SYSTEM
+Configuration Name: 
+Machine: CLIENT01 (Microsoft Windows NT 10.0.26200.0)
+Host Application: powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\Provision\phase3-client01-unattended.ps1
+Process ID: 5396
+PSVersion: 5.1.26100.9168
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.9168
+BuildVersion: 10.0.26100.9168
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== client01 unattended provisioning — resuming at stage 0 ===
+[Stage 0] Checking connectivity to ad01 (10.0.7.10)...
+     ad01 not ready yet — will retry automatically in 2 minutes.
+**********************
+Windows PowerShell transcript end
+End time: 20260907195057
+**********************
+**********************
+Windows PowerShell transcript start
+Start time: 20260907195250
+Username: WORKGROUP\SYSTEM
+RunAs User: WORKGROUP\SYSTEM
+Configuration Name: 
+Machine: CLIENT01 (Microsoft Windows NT 10.0.26200.0)
+Host Application: powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\Provision\phase3-client01-unattended.ps1
+Process ID: 9140
+PSVersion: 5.1.26100.9168
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.9168
+BuildVersion: 10.0.26100.9168
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== client01 unattended provisioning — resuming at stage 0 ===
+[Stage 0] Checking connectivity to ad01 (10.0.7.10)...
+     ad01 not ready yet — will retry automatically in 2 minutes.
+**********************
+Windows PowerShell transcript end
+End time: 20260907195259
+**********************
+**********************
+Windows PowerShell transcript start
+Start time: 20260907195452
+Username: WORKGROUP\SYSTEM
+RunAs User: WORKGROUP\SYSTEM
+Configuration Name: 
+Machine: CLIENT01 (Microsoft Windows NT 10.0.26200.0)
+Host Application: powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\Provision\phase3-client01-unattended.ps1
+Process ID: 5632
+PSVersion: 5.1.26100.9168
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.9168
+BuildVersion: 10.0.26100.9168
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== client01 unattended provisioning — resuming at stage 0 ===
+[Stage 0] Checking connectivity to ad01 (10.0.7.10)...
+     ad01 not ready yet — will retry automatically in 2 minutes.
+**********************
+Windows PowerShell transcript end
+End time: 20260907195501
+**********************
+**********************
+Windows PowerShell transcript start
+Start time: 20260907195654
+Username: WORKGROUP\SYSTEM
+RunAs User: WORKGROUP\SYSTEM
+Configuration Name: 
+Machine: CLIENT01 (Microsoft Windows NT 10.0.26200.0)
+Host Application: powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\Provision\phase3-client01-unattended.ps1
+Process ID: 5976
+PSVersion: 5.1.26100.9168
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.9168
+BuildVersion: 10.0.26100.9168
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== client01 unattended provisioning — resuming at stage 0 ===
+[Stage 0] Checking connectivity to ad01 (10.0.7.10)...
+     ad01 not ready yet — will retry automatically in 2 minutes.
+**********************
+Windows PowerShell transcript end
+End time: 20260907195704
+**********************
+**********************
+Windows PowerShell transcript start
+Start time: 20260907195856
+Username: WORKGROUP\SYSTEM
+RunAs User: WORKGROUP\SYSTEM
+Configuration Name: 
+Machine: CLIENT01 (Microsoft Windows NT 10.0.26200.0)
+Host Application: powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\Provision\phase3-client01-unattended.ps1
+Process ID: 1284
+PSVersion: 5.1.26100.9168
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.9168
+BuildVersion: 10.0.26100.9168
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== client01 unattended provisioning — resuming at stage 0 ===
+[Stage 0] Checking connectivity to ad01 (10.0.7.10)...
+     ad01 not ready yet — will retry automatically in 2 minutes.
+**********************
+Windows PowerShell transcript end
+End time: 20260907195906
+**********************
+**********************
+Windows PowerShell transcript start
+Start time: 20260907200017
+Username: CLIENT01\Administrator
+RunAs User: CLIENT01\Administrator
+Configuration Name: 
+Machine: CLIENT01 (Microsoft Windows NT 10.0.26200.0)
+Host Application: powershell
+Process ID: 7360
+PSVersion: 5.1.26100.9168
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.9168
+BuildVersion: 10.0.26100.9168
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== client01 unattended provisioning — resuming at stage 0 ===
+[Stage 0] Checking connectivity to ad01 (10.0.7.10)...
+     ad01 reachable and DNS working.
+[Stage 0] Joining domain ad.lab...
+WARNING: The changes will take effect after you restart the computer CLIENT01.
+     Domain joined. Rebooting...
+**********************
+Windows PowerShell transcript end
+End time: 20260907200159
+**********************
+**********************
+Windows PowerShell transcript start
+Start time: 20260907200219
+Username: WORKGROUP\SYSTEM
+RunAs User: WORKGROUP\SYSTEM
+Configuration Name: 
+Machine: CLIENT01 (Microsoft Windows NT 10.0.26200.0)
+Host Application: powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\Provision\phase3-client01-unattended.ps1
+Process ID: 5732
+PSVersion: 5.1.26100.9168
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.9168
+BuildVersion: 10.0.26100.9168
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+=== client01 unattended provisioning — resuming at stage 1 ===
+[Stage 1] Verifying domain membership...
+     Confirmed: CLIENT01 is a member of ad.lab.
+=== client01 unattended provisioning complete ===
+**********************
+Windows PowerShell transcript end
+End time: 20260907200222
+**********************"

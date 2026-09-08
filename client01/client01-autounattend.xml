@@ -19,18 +19,21 @@
            media onto C:\Provision and launch it once — everything else
            (TPM/SecureBoot bypass, local "huber" admin account, RDP/SSH)
            is unchanged from the golden template
-         - NOTE: the golden template already uses the SAME identifier
-           ("Ethernet Instance 0") for both the TCPIP and DNS-Client
-           components — unlike the Windows Server answer files in this
-           repo (dcs/, dhcp/, msql25/), which use "Ethernet" for TCPIP.
-           This is intentional, not a leftover bug to "fix" — Windows 11
-           apparently enumerates the interim adapter name differently
-           during specialize than Windows Server does, and this identifier
-           is what the already-working win11.qcow2 box uses. Do NOT change
-           this to "Ethernet" to match the Server scripts — that would
-           introduce the exact DNS-binding bug this repo already spent a
-           long troubleshooting session fixing elsewhere (see
-           dhcp01-autounattend.xml's own note on this).
+         - NOTE: an earlier version of this file used "Ethernet Instance
+           0" for both the TCPIP and DNS-Client identifiers, on the
+           assumption that this matched the golden win11/autounattend.xml
+           template and was therefore correct. That assumption was wrong —
+           confirmed via `Get-NetAdapter` on the actual built VM, whose
+           real interface name is plain "Ethernet". Internal consistency
+           between the two components only avoids the DNS-binding-only
+           variant of this bug (mismatched identifiers between TCPIP and
+           DNS-Client); it does nothing if BOTH components use the wrong
+           identifier, which is what happened here — neither the static
+           IP nor DNS ever applied at all, leaving the adapter on DHCP/
+           APIPA. Both identifiers below are "Ethernet" for exactly this
+           reason. If you fork this file again, verify the real adapter
+           name with Get-NetAdapter rather than trusting either this file
+           or the golden template on its own.
   ─────────────────────────────────────────────────────────────── -->
   <settings pass="windowsPE">
     <component language="neutral" name="Microsoft-Windows-International-Core-WinPE" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" versionScope="nonSxS">
@@ -156,7 +159,7 @@
             <Metric>10</Metric>
             <RouterDiscoveryEnabled>false</RouterDiscoveryEnabled>
           </Ipv4Settings>
-          <Identifier>Ethernet Instance 0</Identifier>
+          <Identifier>Ethernet</Identifier>
           <UnicastIpAddresses>
             <IpAddress wcm:action="add" wcm:keyValue="1">10.0.4.10/24</IpAddress>
           </UnicastIpAddresses>
@@ -171,13 +174,14 @@
         </Interface>
       </Interfaces>
     </component>
-    <!-- Identifier matches the TCPIP component above ("Ethernet Instance
-         0") — see the note at the top of this file on why this must NOT
-         be changed to plain "Ethernet" for a Windows 11 guest. -->
+    <!-- Identifier matches the TCPIP component above ("Ethernet") — see
+         the note at the top of this file: confirmed via Get-NetAdapter
+         that this is the guest's real adapter name, not "Ethernet
+         Instance 0". -->
     <component language="neutral" name="Microsoft-Windows-DNS-Client" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" versionScope="nonSxS">
       <Interfaces>
         <Interface wcm:action="add">
-          <Identifier>Ethernet Instance 0</Identifier>
+          <Identifier>Ethernet</Identifier>
           <DNSServerSearchOrder>
             <IpAddress wcm:action="add" wcm:keyValue="1">10.0.7.10</IpAddress>
             <IpAddress wcm:action="add" wcm:keyValue="2">10.0.7.11</IpAddress>
@@ -240,31 +244,47 @@
         </SynchronousCommand>
         <SynchronousCommand wcm:action="add">
           <Order>3</Order>
+          <!-- NOT just Enable-NetFirewallRule — confirmed on a built VM
+               that the built-in FPS-ICMP4/6-ERQ-In rules ship scoped to
+               Profile=Private,Public by default, excluding Domain
+               entirely. Enable-NetFirewallRule only toggles the Enabled
+               flag; it never touches Profile scope. Ping worked fine
+               right after this ran (network profile was Private/Public
+               pre-join) and broke the moment the domain join completed
+               and NLA reclassified the connection as DomainAuthenticated
+               — the rule stayed Enabled=True throughout, it just stopped
+               applying under the new profile. Set-NetFirewallRule
+               -Profile Any is required to actually cover this. -->
+          <CommandLine>powershell.exe -NonInteractive -ExecutionPolicy Bypass -Command "Set-NetFirewallRule -Name FPS-ICMP4-ERQ-In,FPS-ICMP6-ERQ-In -Profile Any -Enabled True"</CommandLine>
+          <Description>Enable ICMP echo reply on all profiles (allow ping even after domain join changes the network profile)</Description>
+          </SynchronousCommand>
+        <SynchronousCommand wcm:action="add">
+          <Order>4</Order>
           <CommandLine>net user huber /passwordreq:yes /expires:never</CommandLine>
           <Description>Password never expires</Description>
         </SynchronousCommand>
         <SynchronousCommand wcm:action="add">
-          <Order>4</Order>
+          <Order>5</Order>
           <CommandLine>powershell.exe -NonInteractive -ExecutionPolicy Bypass -Command "Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0"</CommandLine>
           <Description>Install OpenSSH Server</Description>
         </SynchronousCommand>
         <SynchronousCommand wcm:action="add">
-          <Order>5</Order>
+          <Order>6</Order>
           <CommandLine>powershell.exe -NonInteractive -ExecutionPolicy Bypass -Command "Start-Service sshd; Set-Service -Name sshd -StartupType Automatic"</CommandLine>
           <Description>Enable and start sshd</Description>
         </SynchronousCommand>
         <SynchronousCommand wcm:action="add">
-          <Order>6</Order>
+          <Order>7</Order>
           <CommandLine>powershell.exe -NonInteractive -ExecutionPolicy Bypass -Command "New-NetFirewallRule -Name OpenSSH-In -DisplayName 'OpenSSH Server' -Enabled True -Direction Inbound -Protocol TCP -Action Allow -LocalPort 22"</CommandLine>
           <Description>Firewall rule for SSH port 22</Description>
         </SynchronousCommand>
         <SynchronousCommand wcm:action="add">
-          <Order>7</Order>
+          <Order>8</Order>
           <CommandLine>cmd.exe /c if not exist C:\Provision mkdir C:\Provision &amp; copy /Y D:\Provision\phase3-client01-unattended.ps1 C:\Provision\phase3-client01-unattended.ps1</CommandLine>
           <Description>Stage domain-join script from install media to C:\Provision</Description>
         </SynchronousCommand>
         <SynchronousCommand wcm:action="add">
-          <Order>8</Order>
+          <Order>9</Order>
           <CommandLine>powershell.exe -NonInteractive -ExecutionPolicy Bypass -File "C:\Provision\phase3-client01-unattended.ps1"</CommandLine>
           <Description>Bootstrap unattended domain join (client01)</Description>
         </SynchronousCommand>

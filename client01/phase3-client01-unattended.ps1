@@ -104,10 +104,21 @@ if ($stage -eq 0) {
     Register-ContinueTask
 
     Write-Host "[Stage 0] Checking connectivity to ad01 ($AdDcIp)..." -ForegroundColor Cyan
-    $ping = Test-Connection -ComputerName $AdDcIp -Count 2 -Quiet -ErrorAction SilentlyContinue
-    $dns  = Resolve-DnsName $DomainName -Server $AdDcIp -ErrorAction SilentlyContinue
+    # NOT Test-Connection (ICMP) — confirmed against fw01's OPNsense config
+    # that the CLIENTS->IDENTITY firewall rule deliberately permits only
+    # the specific ports a domain join needs (DNS 53, Kerberos 88, LDAP
+    # 389, SMB 445, LDAPS 636, GC 3268/3269 — the "ADPorts" alias) and
+    # nothing else, ICMP included. That's a real, intentional segmentation
+    # policy, not a gap to route around — a ping-based gate would loop
+    # forever on any host reaching ad01/ad02 across a segment boundary
+    # (unlike dhcp01/ad02, which share ad01's own segment and never hit
+    # this). Probe LDAP over TCP instead, which the firewall actually
+    # allows and which is a more meaningful signal anyway — it directly
+    # tests the protocol the join itself depends on.
+    $ldapUp = (Test-NetConnection -ComputerName $AdDcIp -Port 389 -InformationLevel Quiet -WarningAction SilentlyContinue)
+    $dns    = Resolve-DnsName $DomainName -Server $AdDcIp -ErrorAction SilentlyContinue
 
-    if (-not $ping -or -not $dns) {
+    if (-not $ldapUp -or -not $dns) {
         Write-Host "     ad01 not ready yet — will retry automatically in 2 minutes." -ForegroundColor Yellow
         Stop-Transcript | Out-Null
         exit
@@ -115,8 +126,8 @@ if ($stage -eq 0) {
     Write-Host "     ad01 reachable and DNS working." -ForegroundColor Green
 
     if ((Get-WmiObject Win32_ComputerSystem).Domain -ne $DomainName) {
-        # Belt-and-suspenders: Test-Connection is pure ICMP and
-        # Resolve-DnsName -Server above bypasses the adapter's own
+        # Belt-and-suspenders: the LDAP probe above tests port reachability
+        # only, and Resolve-DnsName -Server bypasses the adapter's own
         # resolver, so neither actually proves the NIC has a DNS server
         # bound. Confirmed necessary the hard way on dhcp01 — if this
         # adapter's own DNS-Client identifier ever drifts out of sync with
@@ -150,6 +161,23 @@ if ($stage -eq 1) {
     }
 
     Write-Host "     Confirmed: $($computerSystem.Name) is a member of $($computerSystem.Domain)." -ForegroundColor Green
+
+    # Force onto the domain time hierarchy rather than trust Windows to
+    # pick this up on its own. Confirmed the hard way: this VM sat on its
+    # local CMOS clock ("not synchronized", Source: Local CMOS Clock)
+    # through the entire join + reboot + verification above without that
+    # blocking any of it — clock drift doesn't stop the join itself, it
+    # silently breaks Kerberos-dependent operations later (in this case,
+    # sshd's per-connection logon path reset every single SSH attempt
+    # until this was fixed). Requires fw01 to permit NTP (123) from
+    # CLIENTS to DomainControllers — see README.md's Prerequisites.
+    Write-Host "[Stage 1] Syncing time to domain hierarchy..." -ForegroundColor Cyan
+    w32tm /config /syncfromflags:domhier /update | Out-Null
+    Restart-Service w32time
+    $resync = w32tm /resync /force 2>&1
+    Write-Host "     $resync" -ForegroundColor Gray
+    Start-Sleep -Seconds 2
+    w32tm /query /status | Out-Host
 
     Set-Stage 2
     Unregister-ContinueTask
