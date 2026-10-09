@@ -1,0 +1,338 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<unattend xmlns="urn:schemas-microsoft-com:unattend" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <!--
+    rodc01-autounattend.xml
+    Custom answer file for rodc01 (Windows Server 2025 Core) — Phase 3
+    DMZ identity broker: a Read-Only Domain Controller, triple-homed across
+    DMZ-Web, DMZ-VPN, and MGMT so it can serve Kerberos/LDAP auth to both
+    DMZ tiers without a writable DC (or any DC) ever sitting in the DMZ.
+
+    Forked from msql25/sql01-autounattend.xml for the Windows Server 2025
+    disk layout (EFI + MSR + Primary — 2025 setup rejects the 2-partition
+    layout used by win19/win22) and product key, and from
+    dcs/ad02-autounattend.xml for the DC-promotion FirstLogonCommands
+    pattern. Differences from both:
+
+      - ComputerName is baked in as RODC01 (no post-install rename needed)
+      - THREE static IPs are baked in, one per NIC:
+          10.0.2.15/24 on lab-dmz-web  (gateway 10.0.2.1  — default route)
+          10.0.5.15/24 on lab-dmz-vpn  (route to 10.0.7.0/24 only, via
+                                         10.0.5.1 — DMZ-VPN must not become
+                                         a second default gateway, and per
+                                         nets/README.md DMZ_VPN cannot reach
+                                         DMZ_WEB)
+          10.0.3.14/24 on lab-mgmt     (OOB leg, no gateway — same pattern
+                                         as vpn01/waf01/lb01's MGMT legs in
+                                         general-nw.puml)
+        Unlike ad0X (single NIC), a generic "Ethernet" Identifier is
+        ambiguous across three virtio NICs enumerated in an unpredictable
+        order at first boot. Each Interface below is matched by MAC address
+        instead — create-rodc01-vm.sh pins these same three MACs on the
+        virt-install command line, so the mapping here is guaranteed
+        correct on first boot with no post-boot NIC-by-MAC reshuffle script
+        needed (contrast with dmz/phase6-web01.ps1's approach, which has to
+        do that reshuffle in-guest because its answer file predates this).
+      - DNS on both DMZ-facing NICs points at ad01 then ad02
+        (10.0.7.10 / 10.0.7.11) — needed before promotion to resolve and
+        reach ad.lab at all. See dcs/README.md for the pre-promotion vs.
+        post-promotion DNS pattern this mirrors from ad02.
+      - FirstLogonCommands stage phase3-rodc01-unattended.ps1 from the
+        install media onto C:\Provision and launch it once. From there the
+        guest waits for ad01/ad02 (retrying every 2 minutes, no manual
+        rerun needed) and promotes itself as a read-only replica DC for
+        ad.lab automatically. See dcs/README.md section 7 for how the
+        underlying chain works (same mechanism as ad02, extended for
+        -ReadOnlyReplica).
+
+    PREREQUISITE (not yet in this repo — see the "Gap" note in
+    dcs/README.md section 3): fw01 needs an outbound allow rule from
+    lab-dmz-web AND lab-dmz-vpn to ad01/ad02 (10.0.7.10, 10.0.7.11) on
+    53/88/389/445/636/3268/3269 (the same ADPorts alias opnsense26 already
+    uses for the inbound DMZ-Web->RODC rule) before this VM can promote.
+    Without it, Stage 0 below will simply retry forever, logging
+    "ad01/ad02 not reachable yet".
+  -->
+  <settings pass="windowsPE">
+    <component language="neutral" name="Microsoft-Windows-International-Core-WinPE" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" versionScope="nonSxS">
+      <SetupUILanguage>
+        <UILanguage>en-US</UILanguage>
+      </SetupUILanguage>
+      <InputLocale>en-US</InputLocale>
+      <SystemLocale>en-US</SystemLocale>
+      <UILanguage>en-US</UILanguage>
+      <UserLocale>en-US</UserLocale>
+    </component>
+    <component language="neutral" name="Microsoft-Windows-PnpCustomizationsWinPE" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" versionScope="nonSxS">
+      <DriverPaths>
+        <PathAndCredentials wcm:action="add" wcm:keyValue="1">
+          <Path>D:\NetKVM</Path>
+        </PathAndCredentials>
+      </DriverPaths>
+    </component>
+    <component language="neutral" name="Microsoft-Windows-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" versionScope="nonSxS">
+      <!-- EFI + MSR + Primary — same 3-partition layout as
+           msql25/sql01-autounattend.xml. Server 2025 setup rejects the
+           older 2-partition (EFI + Primary) layout still used by
+           ad02-autounattend.xml (win19/win22). -->
+      <DiskConfiguration>
+        <WillShowUI>Never</WillShowUI>
+        <Disk wcm:action="add">
+          <DiskID>0</DiskID>
+          <WillWipeDisk>true</WillWipeDisk>
+          <CreatePartitions>
+            <CreatePartition wcm:action="add">
+              <Order>1</Order>
+              <Size>500</Size>
+              <Type>EFI</Type>
+            </CreatePartition>
+            <CreatePartition wcm:action="add">
+              <Order>2</Order>
+              <Size>128</Size>
+              <Type>MSR</Type>
+            </CreatePartition>
+            <CreatePartition wcm:action="add">
+              <Order>3</Order>
+              <Extend>true</Extend>
+              <Type>Primary</Type>
+            </CreatePartition>
+          </CreatePartitions>
+          <ModifyPartitions>
+            <ModifyPartition wcm:action="add">
+              <Order>1</Order>
+              <PartitionID>1</PartitionID>
+              <Format>FAT32</Format>
+              <Label>System</Label>
+            </ModifyPartition>
+            <ModifyPartition wcm:action="add">
+              <Order>2</Order>
+              <PartitionID>2</PartitionID>
+            </ModifyPartition>
+            <ModifyPartition wcm:action="add">
+              <Order>3</Order>
+              <PartitionID>3</PartitionID>
+              <Format>NTFS</Format>
+              <Label>Windows</Label>
+              <Letter>C</Letter>
+            </ModifyPartition>
+          </ModifyPartitions>
+        </Disk>
+      </DiskConfiguration>
+      <ImageInstall>
+        <OSImage>
+          <InstallFrom>
+            <MetaData wcm:action="add">
+              <Key>/IMAGE/DESCRIPTION</Key>
+              <Value>Windows Server 2025 SERVERSTANDARDCORE</Value>
+            </MetaData>
+          </InstallFrom>
+          <InstallTo>
+            <DiskID>0</DiskID>
+            <PartitionID>3</PartitionID>
+          </InstallTo>
+          <WillShowUI>Never</WillShowUI>
+          <InstallToAvailablePartition>false</InstallToAvailablePartition>
+        </OSImage>
+      </ImageInstall>
+      <UserData>
+        <AcceptEula>true</AcceptEula>
+        <!-- Public Microsoft KMS client setup key for Windows Server 2025
+             Standard — same key as msql25/sql01-autounattend.xml. Not an
+             activation key; swap for a real MAK/KMS key outside a lab. -->
+        <ProductKey>
+          <Key>TVRH4-8B7JQ-44P7D-GQKWV-MHFVG</Key>
+          <WillShowUI>Never</WillShowUI>
+        </ProductKey>
+      </UserData>
+    </component>
+  </settings>
+  <settings pass="specialize">
+    <component language="neutral" name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" versionScope="nonSxS">
+      <ComputerName>RODC01</ComputerName>
+      <TimeZone>SA Pacific Standard Time</TimeZone>
+    </component>
+    <!-- Three interfaces, each matched by MAC address (not "Ethernet") so
+         the mapping is deterministic regardless of virtio NIC enumeration
+         order. create-rodc01-vm.sh pins these exact MACs via the
+         virt-install network flag's mac= option on each attachment. -->
+    <component language="neutral" name="Microsoft-Windows-TCPIP" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" versionScope="nonSxS">
+      <Interfaces>
+        <!-- lab-dmz-web — 10.0.2.0/24, gateway 10.0.2.1. Carries the only
+             default route on this host. -->
+        <Interface wcm:action="add">
+          <Ipv4Settings>
+            <DhcpEnabled>false</DhcpEnabled>
+            <Metric>10</Metric>
+            <RouterDiscoveryEnabled>false</RouterDiscoveryEnabled>
+          </Ipv4Settings>
+          <Identifier>52-54-00-02-00-15</Identifier>
+          <UnicastIpAddresses>
+            <IpAddress wcm:action="add" wcm:keyValue="1">10.0.2.15/24</IpAddress>
+          </UnicastIpAddresses>
+          <Routes>
+            <Route wcm:action="add">
+              <Identifier>1</Identifier>
+              <Metric>10</Metric>
+              <NextHopAddress>10.0.2.1</NextHopAddress>
+              <Prefix>0.0.0.0/0</Prefix>
+            </Route>
+          </Routes>
+        </Interface>
+        <!-- lab-dmz-vpn — 10.0.5.0/24. No default gateway here: only a
+             host route back to lab-identity (10.0.7.0/24) for replication,
+             so this leg can't accidentally become a second default route
+             or a path into DMZ-Web (nets/README.md: "DMZ_VPN cannot reach
+             DMZ_WEB"). -->
+        <Interface wcm:action="add">
+          <Ipv4Settings>
+            <DhcpEnabled>false</DhcpEnabled>
+            <Metric>20</Metric>
+            <RouterDiscoveryEnabled>false</RouterDiscoveryEnabled>
+          </Ipv4Settings>
+          <Identifier>52-54-00-05-00-15</Identifier>
+          <UnicastIpAddresses>
+            <IpAddress wcm:action="add" wcm:keyValue="1">10.0.5.15/24</IpAddress>
+          </UnicastIpAddresses>
+          <Routes>
+            <Route wcm:action="add">
+              <Identifier>1</Identifier>
+              <Metric>10</Metric>
+              <NextHopAddress>10.0.5.1</NextHopAddress>
+              <Prefix>10.0.7.0/24</Prefix>
+            </Route>
+          </Routes>
+        </Interface>
+        <!-- lab-mgmt — 10.0.3.0/24. OOB leg only, no gateway/route — same
+             pattern as vpn01/waf01/lb01's MGMT legs in general-nw.puml.
+             fw01's "MGMT->all: patch/log/RDP" rule is inbound-only. -->
+        <Interface wcm:action="add">
+          <Ipv4Settings>
+            <DhcpEnabled>false</DhcpEnabled>
+            <Metric>30</Metric>
+            <RouterDiscoveryEnabled>false</RouterDiscoveryEnabled>
+          </Ipv4Settings>
+          <Identifier>52-54-00-03-00-14</Identifier>
+          <UnicastIpAddresses>
+            <IpAddress wcm:action="add" wcm:keyValue="1">10.0.3.14/24</IpAddress>
+          </UnicastIpAddresses>
+        </Interface>
+      </Interfaces>
+    </component>
+    <!-- ad01 first, ad02 second, on both DMZ-facing legs — rodc01 has to
+         resolve and reach a writable DC to promote at all. Once promoted
+         with -InstallDns, rodc01 becomes authoritative for ad.lab itself
+         on these same interfaces (see phase3-rodc01-unattended.ps1 Stage 1
+         for pinning forwarders, matching ad01/ad02's convention). -->
+    <component language="neutral" name="Microsoft-Windows-DNS-Client" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" versionScope="nonSxS">
+      <Interfaces>
+        <Interface wcm:action="add">
+          <Identifier>52-54-00-02-00-15</Identifier>
+          <DNSServerSearchOrder>
+            <IpAddress wcm:action="add" wcm:keyValue="1">10.0.7.10</IpAddress>
+            <IpAddress wcm:action="add" wcm:keyValue="2">10.0.7.11</IpAddress>
+          </DNSServerSearchOrder>
+          <EnableAdapterDomainNameRegistration>false</EnableAdapterDomainNameRegistration>
+        </Interface>
+        <Interface wcm:action="add">
+          <Identifier>52-54-00-05-00-15</Identifier>
+          <DNSServerSearchOrder>
+            <IpAddress wcm:action="add" wcm:keyValue="1">10.0.7.10</IpAddress>
+            <IpAddress wcm:action="add" wcm:keyValue="2">10.0.7.11</IpAddress>
+          </DNSServerSearchOrder>
+          <EnableAdapterDomainNameRegistration>false</EnableAdapterDomainNameRegistration>
+        </Interface>
+        <Interface wcm:action="add">
+          <Identifier>52-54-00-03-00-14</Identifier>
+          <DNSServerSearchOrder>
+            <IpAddress wcm:action="add" wcm:keyValue="1">10.0.7.10</IpAddress>
+            <IpAddress wcm:action="add" wcm:keyValue="2">10.0.7.11</IpAddress>
+          </DNSServerSearchOrder>
+          <EnableAdapterDomainNameRegistration>false</EnableAdapterDomainNameRegistration>
+        </Interface>
+      </Interfaces>
+    </component>
+    <component language="neutral" name="Microsoft-Windows-ServerManager-SvrMgrNc" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" versionScope="nonSxS">
+      <DoNotOpenServerManagerAtLogon>true</DoNotOpenServerManagerAtLogon>
+    </component>
+  </settings>
+  <settings pass="oobeSystem">
+    <component language="neutral" name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" versionScope="nonSxS">
+      <OOBE>
+        <HideEULAPage>true</HideEULAPage>
+        <HideLocalAccountScreen>true</HideLocalAccountScreen>
+        <HideOnlineAccountScreens>true</HideOnlineAccountScreens>
+        <HideWirelessSetupInOOBE>true</HideWirelessSetupInOOBE>
+        <NetworkLocation>Work</NetworkLocation>
+        <ProtectYourPC>1</ProtectYourPC>
+        <SkipMachineOOBE>true</SkipMachineOOBE>
+        <SkipUserOOBE>true</SkipUserOOBE>
+      </OOBE>
+      <!-- AutoLogon triggers the shell session needed to fire
+           FirstLogonCommands on Server Core -->
+      <AutoLogon>
+        <Password>
+          <Value>Server2012!</Value>
+          <PlainText>true</PlainText>
+        </Password>
+        <Username>Administrator</Username>
+        <Enabled>true</Enabled>
+        <LogonCount>1</LogonCount>
+      </AutoLogon>
+      <UserAccounts>
+        <AdministratorPassword>
+          <Value>Server2012!</Value>
+          <PlainText>true</PlainText>
+        </AdministratorPassword>
+      </UserAccounts>
+      <FirstLogonCommands>
+        <SynchronousCommand wcm:action="add">
+          <Order>1</Order>
+          <CommandLine>reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Setup\OOBE" /v SetupDisplayedProductKey /t REG_DWORD /d 1 /f</CommandLine>
+          <Description>Disable product key prompt</Description>
+          <RequiresUserInput>false</RequiresUserInput>
+        </SynchronousCommand>
+        <SynchronousCommand wcm:action="add">
+          <Order>2</Order>
+          <CommandLine>powershell.exe -NonInteractive -ExecutionPolicy Bypass -Command "Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0"</CommandLine>
+          <Description>Install OpenSSH Server</Description>
+          <RequiresUserInput>false</RequiresUserInput>
+        </SynchronousCommand>
+        <SynchronousCommand wcm:action="add">
+          <Order>3</Order>
+          <CommandLine>powershell.exe -NonInteractive -ExecutionPolicy Bypass -Command "Set-Service sshd -StartupType Automatic; Start-Service sshd"</CommandLine>
+          <Description>Enable and start sshd</Description>
+          <RequiresUserInput>false</RequiresUserInput>
+        </SynchronousCommand>
+        <SynchronousCommand wcm:action="add">
+          <Order>4</Order>
+          <CommandLine>powershell.exe -NonInteractive -ExecutionPolicy Bypass -Command "New-NetFirewallRule -Name OpenSSH-In -DisplayName 'OpenSSH Server' -Enabled True -Direction Inbound -Protocol TCP -Action Allow -LocalPort 22"</CommandLine>
+          <Description>Open firewall port 22</Description>
+          <RequiresUserInput>false</RequiresUserInput>
+        </SynchronousCommand>
+        <SynchronousCommand wcm:action="add">
+          <Order>5</Order>
+          <CommandLine>powershell.exe -NonInteractive -ExecutionPolicy Bypass -Command "Enable-NetFirewallRule -Name FPS-ICMP4-ERQ-In,FPS-ICMP6-ERQ-In"</CommandLine>
+          <Description>Enable ICMP echo reply (allow ping)</Description>
+          <RequiresUserInput>false</RequiresUserInput>
+        </SynchronousCommand>
+        <SynchronousCommand wcm:action="add">
+          <Order>6</Order>
+          <CommandLine>cmd.exe /c bcdedit /ems {current} on &amp; bcdedit /emssettings EMSPORT:1 EMSBAUDRATE:115200 &amp; bcdedit /bootems {current} on</CommandLine>
+          <Description>Enable EMS/SAC on COM1 (115200) for virsh console access; takes effect on next reboot</Description>
+          <RequiresUserInput>false</RequiresUserInput>
+        </SynchronousCommand>
+        <SynchronousCommand wcm:action="add">
+          <Order>7</Order>
+          <CommandLine>cmd.exe /c if not exist C:\Provision mkdir C:\Provision &amp; copy /Y D:\Provision\phase3-rodc01-unattended.ps1 C:\Provision\phase3-rodc01-unattended.ps1</CommandLine>
+          <Description>Stage RODC promotion script from install media to C:\Provision</Description>
+          <RequiresUserInput>false</RequiresUserInput>
+        </SynchronousCommand>
+        <SynchronousCommand wcm:action="add">
+          <Order>8</Order>
+          <CommandLine>powershell.exe -NonInteractive -ExecutionPolicy Bypass -File "C:\Provision\phase3-rodc01-unattended.ps1"</CommandLine>
+          <Description>Bootstrap unattended RODC promotion (rodc01)</Description>
+          <RequiresUserInput>false</RequiresUserInput>
+        </SynchronousCommand>
+      </FirstLogonCommands>
+    </component>
+  </settings>
+</unattend>
